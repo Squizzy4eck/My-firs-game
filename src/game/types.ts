@@ -7,27 +7,33 @@ export type CameraMode = 'third' | 'first';
 export type TimeOfDay = 'night' | 'day';
 
 export type PlayerCarId =
+  | 'starter'
   | 'crimson'
-  | 'cobalt'
+  | 'pickup'
   | 'amber'
   | 'emerald'
   | 'police'
-  | 'pickup'
+  | 'cobalt'
   | 'tank';
 
 export type PlayerArchetype =
+  | 'sedan'
   | 'sport'
-  | 'hyper'
+  | 'pickup'
   | 'muscle'
   | 'suv'
   | 'police'
-  | 'pickup'
+  | 'hyper'
   | 'tank';
 
 export interface PlayerCarOption {
   id: PlayerCarId;
   archetype: PlayerArchetype;
   name: string;
+  price: number;
+  cruiseSpeedKmh: number;
+  maxSpeedKmh: number;
+  nitroSpeedKmh: number;
   bodyColor: string;
   accentColor: string;
   stripeColor: string;
@@ -37,9 +43,27 @@ export interface PlayerCarOption {
 
 export const PLAYER_CARS: PlayerCarOption[] = [
   {
+    id: 'starter',
+    archetype: 'sedan',
+    name: 'Классик Седан',
+    price: 0,
+    cruiseSpeedKmh: 104,
+    maxSpeedKmh: 150,
+    nitroSpeedKmh: 172,
+    bodyColor: '#64748B',
+    accentColor: '#475569',
+    stripeColor: '#94A3B8',
+    cockpitOffsetY: 0.02,
+    cockpitOffsetZ: 0,
+  },
+  {
     id: 'crimson',
     archetype: 'sport',
     name: 'Спорткар',
+    price: 450,
+    cruiseSpeedKmh: 112,
+    maxSpeedKmh: 165,
+    nitroSpeedKmh: 194,
     bodyColor: '#DC2626',
     accentColor: '#991B1B',
     stripeColor: '#F8FAFC',
@@ -47,19 +71,27 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: 0,
   },
   {
-    id: 'cobalt',
-    archetype: 'hyper',
-    name: 'Гиперкар GT',
-    bodyColor: '#2563EB',
-    accentColor: '#1E3A8A',
-    stripeColor: '#FACC15',
-    cockpitOffsetY: -0.05,
-    cockpitOffsetZ: -0.04,
+    id: 'pickup',
+    archetype: 'pickup',
+    name: 'Пикап Трак',
+    price: 900,
+    cruiseSpeedKmh: 118,
+    maxSpeedKmh: 180,
+    nitroSpeedKmh: 212,
+    bodyColor: '#7C3AED',
+    accentColor: '#4C1D95',
+    stripeColor: '#E2E8F0',
+    cockpitOffsetY: 0.24,
+    cockpitOffsetZ: -0.08,
   },
   {
     id: 'amber',
     archetype: 'muscle',
     name: 'Маслкар V8',
+    price: 1400,
+    cruiseSpeedKmh: 124,
+    maxSpeedKmh: 195,
+    nitroSpeedKmh: 230,
     bodyColor: '#D97706',
     accentColor: '#78350F',
     stripeColor: '#111827',
@@ -70,6 +102,10 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     id: 'emerald',
     archetype: 'suv',
     name: 'Внедорожник',
+    price: 2000,
+    cruiseSpeedKmh: 130,
+    maxSpeedKmh: 210,
+    nitroSpeedKmh: 248,
     bodyColor: '#059669',
     accentColor: '#064E3B',
     stripeColor: '#E2E8F0',
@@ -80,6 +116,10 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     id: 'police',
     archetype: 'police',
     name: 'Полиция',
+    price: 2800,
+    cruiseSpeedKmh: 136,
+    maxSpeedKmh: 225,
+    nitroSpeedKmh: 266,
     bodyColor: '#111827',
     accentColor: '#1E293B',
     stripeColor: '#F8FAFC',
@@ -87,19 +127,27 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: 0,
   },
   {
-    id: 'pickup',
-    archetype: 'pickup',
-    name: 'Пикап Трак',
-    bodyColor: '#7C3AED',
-    accentColor: '#4C1D95',
-    stripeColor: '#E2E8F0',
-    cockpitOffsetY: 0.24,
-    cockpitOffsetZ: -0.08,
+    id: 'cobalt',
+    archetype: 'hyper',
+    name: 'Гиперкар GT',
+    price: 4000,
+    cruiseSpeedKmh: 142,
+    maxSpeedKmh: 242,
+    nitroSpeedKmh: 286,
+    bodyColor: '#2563EB',
+    accentColor: '#1E3A8A',
+    stripeColor: '#FACC15',
+    cockpitOffsetY: -0.05,
+    cockpitOffsetZ: -0.04,
   },
   {
     id: 'tank',
     archetype: 'tank',
     name: 'Боевой танк',
+    price: 6500,
+    cruiseSpeedKmh: 150,
+    maxSpeedKmh: 260,
+    nitroSpeedKmh: 306,
     bodyColor: '#4B5842',
     accentColor: '#2F3829',
     stripeColor: '#D97706',
@@ -163,6 +211,7 @@ export interface Particle3D {
 
 export type CalloutKey =
   | 'nearMiss'
+  | 'distance'
   | 'nitro'
   | 'repair'
   | 'bonus'
@@ -188,6 +237,7 @@ export interface GameHudSnapshot {
   isNitroActive: boolean;
   nearMissCount: number;
   overtakenCount: number;
+  runCash: number;
 }
 
 // 3D World Highway Geometry (1 unit = 1 meter)

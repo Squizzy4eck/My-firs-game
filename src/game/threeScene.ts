@@ -563,6 +563,7 @@ interface PlayerCarRig {
   roofMesh: THREE.Mesh;
   windshieldMesh: THREE.Mesh;
   windshieldMat: THREE.MeshPhysicalMaterial;
+  shadowPlane: THREE.Mesh;
   nitroFlames: THREE.Group;
   headlightLeft: THREE.SpotLight;
   headlightRight: THREE.SpotLight;
@@ -609,9 +610,9 @@ function buildPlayerCar(
 
   const bodyMat = new THREE.MeshPhysicalMaterial({
     color: carOpt.bodyColor,
-    metalness: arch === 'tank' ? 0.28 : 0.55,
-    roughness: arch === 'tank' ? 0.68 : 0.22,
-    clearcoat: arch === 'tank' ? 0.12 : 1.0,
+    metalness: arch === 'tank' ? 0.28 : arch === 'sedan' ? 0.25 : 0.55,
+    roughness: arch === 'tank' ? 0.68 : arch === 'sedan' ? 0.36 : 0.22,
+    clearcoat: arch === 'tank' ? 0.12 : arch === 'sedan' ? 0.45 : 1.0,
     clearcoatRoughness: 0.1,
   });
   const accentMat = new THREE.MeshStandardMaterial({
@@ -1083,8 +1084,8 @@ function buildPlayerCar(
     }
 
     // 4 Wheels (Front two pivot when steering)
-    const wheelRadius = isLifted ? 0.43 : 0.36;
-    const wheelWidth = isHyper ? 0.31 : isLifted ? 0.3 : 0.26;
+    const wheelRadius = isLifted ? 0.43 : arch === 'sedan' ? 0.34 : 0.36;
+    const wheelWidth = isHyper ? 0.31 : isLifted ? 0.3 : arch === 'sedan' ? 0.22 : 0.26;
     const trackX = isHyper ? 1.04 : isLifted ? 1.02 : 0.98;
     const positions: Array<{ x: number; z: number; front: boolean }> = [
       { x: -trackX, z: -1.38, front: true },
@@ -1390,6 +1391,7 @@ function buildPlayerCar(
     roofMesh,
     windshieldMesh,
     windshieldMat,
+    shadowPlane,
     nitroFlames,
     headlightLeft,
     headlightRight,
@@ -1399,6 +1401,8 @@ function buildPlayerCar(
 
 interface TrafficMeshRig {
   group: THREE.Group;
+  bodyMat: THREE.MeshPhysicalMaterial;
+  shadowPlane: THREE.Mesh;
   tailLightMat: THREE.MeshStandardMaterial;
   wheels: THREE.Object3D[];
 }
@@ -1674,7 +1678,7 @@ function buildTrafficCarRig(car: TrafficVehicle, shadowTex: THREE.CanvasTexture)
     }
   }
 
-  return { group, tailLightMat, wheels };
+  return { group, bodyMat, shadowPlane: shadow, tailLightMat, wheels };
 }
 
 export class Highway3DRenderer {
@@ -2041,12 +2045,50 @@ export class Highway3DRenderer {
     this.renderer.setSize(width, height);
   }
 
+  private applyMaterialQuality(
+    rig: PlayerCarRig,
+    isLow: boolean
+  ) {
+    const isTank = rig.archetype === 'tank';
+    const isSedan = rig.archetype === 'sedan';
+    rig.shadowPlane.visible = !isLow;
+    rig.bodyMat.clearcoat = isLow ? 0 : isTank ? 0.12 : isSedan ? 0.45 : 1.0;
+    rig.bodyMat.roughness = isLow ? 0.92 : isTank ? 0.68 : isSedan ? 0.36 : 0.22;
+    rig.bodyMat.metalness = isLow ? 0 : isTank ? 0.28 : isSedan ? 0.25 : 0.55;
+    rig.bodyMat.envMapIntensity = isLow ? 0 : 1.0;
+    rig.bodyMat.needsUpdate = true;
+
+    rig.windshieldMat.clearcoat = isLow ? 0 : 1.0;
+    rig.windshieldMat.roughness = isLow ? 0.85 : 0.04;
+    rig.windshieldMat.metalness = isLow ? 0 : 0.12;
+    rig.windshieldMat.envMapIntensity = isLow ? 0 : 1.0;
+    rig.windshieldMat.needsUpdate = true;
+  }
+
+  private applyTrafficMaterialQuality(rig: TrafficMeshRig, isLow: boolean) {
+    rig.shadowPlane.visible = !isLow;
+    rig.bodyMat.clearcoat = isLow ? 0 : 0.7;
+    rig.bodyMat.roughness = isLow ? 0.92 : 0.3;
+    rig.bodyMat.metalness = isLow ? 0 : 0.35;
+    rig.bodyMat.envMapIntensity = isLow ? 0 : 1.0;
+    rig.bodyMat.needsUpdate = true;
+  }
+
   private syncDynamicLights() {
     const isNight = this.lastTimeOfDay !== 'day';
-    const allowDynamic = this.graphicsQuality === 'high';
+    const isLow = this.graphicsQuality === 'low';
+    const allowDynamic = !isLow;
+
+    this.rimLight.intensity = isLow ? 0 : isNight ? 0.75 : 0.55;
+    this.scene.environment = isLow
+      ? null
+      : isNight
+      ? this.envRTNight.texture
+      : this.envRTDay.texture;
+
     if (isNight) {
-      this.lampHeadMat.emissiveIntensity = 3.6;
-      this.lampGlowCones.visible = true;
+      this.lampHeadMat.emissiveIntensity = isLow ? 0.8 : 3.6;
+      this.lampGlowCones.visible = !isLow;
       this.playerRig.headlightBeamPlane.visible = true;
       const beamIntensity = allowDynamic ? (this.isSoftwareGl ? 115 : 145) : 0;
       this.playerRig.headlightLeft.intensity = beamIntensity;
@@ -2084,9 +2126,31 @@ export class Highway3DRenderer {
     this.camera.far = isLow ? 210 : 320;
     this.camera.updateProjectionMatrix();
 
-    const treeCount = isLow ? 22 : this.treePositions.length;
+    // Remove reflections & specular road sheen in low mode
+    this.roadMat.roughnessMap = isLow ? null : this.roadRoughnessTex;
+    this.roadMat.roughness = isLow ? 1.0 : 0.44;
+    this.roadMat.metalness = isLow ? 0.0 : 0.16;
+    this.roadMat.envMapIntensity = isLow ? 0 : 1.25;
+    this.roadMat.needsUpdate = true;
+
+    // Hide sky glow halos in low mode
+    if (this.moonGroup.children[1]) this.moonGroup.children[1].visible = !isLow;
+    if (this.sunGroup.children[1]) this.sunGroup.children[1].visible = !isLow;
+
+    // Remove roadside decorations (trees, guardrail posts, lamp fixtures) in low mode
+    const treeCount = isLow ? 0 : this.treePositions.length;
+    this.treeTrunks.visible = !isLow;
+    this.treeCanopies.visible = !isLow;
     this.treeTrunks.count = treeCount;
     this.treeCanopies.count = treeCount;
+    this.postPosts.visible = !isLow;
+    this.lampPoles.visible = !isLow;
+    this.lampHeads.visible = !isLow;
+
+    this.applyMaterialQuality(this.playerRig, isLow);
+    for (const rig of this.trafficRigs.values()) {
+      this.applyTrafficMaterialQuality(rig, isLow);
+    }
 
     this.syncDynamicLights();
   }
@@ -2108,7 +2172,6 @@ export class Highway3DRenderer {
 
     this.moonGroup.visible = isNight;
     this.sunGroup.visible = !isNight;
-    this.scene.environment = isNight ? this.envRTNight.texture : this.envRTDay.texture;
 
     if (isNight) {
       this.hemiLight.color.set('#7DD3FC');
@@ -2116,14 +2179,12 @@ export class Highway3DRenderer {
       this.hemiLight.intensity = 1.15;
       this.keyLight.color.set('#DBEAFE');
       this.keyLight.intensity = 1.45;
-      this.rimLight.intensity = 0.75;
     } else {
       this.hemiLight.color.set('#BAE6FD');
       this.hemiLight.groundColor.set('#3F6212');
       this.hemiLight.intensity = 1.25;
       this.keyLight.color.set('#FFFBEB');
       this.keyLight.intensity = 2.4;
-      this.rimLight.intensity = 0.55;
     }
     this.syncDynamicLights();
   }
@@ -2172,6 +2233,7 @@ export class Highway3DRenderer {
     this.playerRig.root.add(this.hornWaveMesh);
     this.scene.add(this.playerRig.root);
 
+    this.applyMaterialQuality(this.playerRig, this.graphicsQuality === 'low');
     this.syncDynamicLights();
   }
 
@@ -2213,54 +2275,58 @@ export class Highway3DRenderer {
       _dummy.updateMatrix();
       this.treeCanopies.setMatrixAt(i, _dummy.matrix);
     }
-    this.treeTrunks.instanceMatrix.needsUpdate = true;
-    this.treeCanopies.instanceMatrix.needsUpdate = true;
-
-    const lampLoop = 228;
-    const lampMinZ = 20 - lampLoop; // -208..+20
-    let activePointLightIdx = 0;
-    for (let i = 0; i < this.lampPositions.length; i++) {
-      const lp = this.lampPositions[i];
-      const wrapped = (((lp.z + engine.worldScrollMeters - lampMinZ) % lampLoop) + lampLoop) % lampLoop;
-      const z = lampMinZ + wrapped;
-
-      _dummy.position.set(lp.x, 3.1, z);
-      _dummy.scale.set(1, 1, 1);
-      _dummy.rotation.set(0, 0, 0);
-      _dummy.updateMatrix();
-      this.lampPoles.setMatrixAt(i, _dummy.matrix);
-
-      const headX = lp.x - lp.side * 0.55;
-      _dummy.position.set(headX, 6.1, z);
-      _dummy.updateMatrix();
-      this.lampHeads.setMatrixAt(i, _dummy.matrix);
-
-      _dummy.position.set(headX, 3.05, z);
-      _dummy.updateMatrix();
-      this.lampGlowCones.setMatrixAt(i, _dummy.matrix);
-
-      if (activePointLightIdx < this.lampPointLights.length && z > -65 && z < 14) {
-        this.lampPointLights[activePointLightIdx++].position.set(headX, 5.4, z);
-      }
+    if (treeVisibleCount > 0) {
+      this.treeTrunks.instanceMatrix.needsUpdate = true;
+      this.treeCanopies.instanceMatrix.needsUpdate = true;
     }
-    this.lampPoles.instanceMatrix.needsUpdate = true;
-    this.lampHeads.instanceMatrix.needsUpdate = true;
-    this.lampGlowCones.instanceMatrix.needsUpdate = true;
 
-    const postLoop = 249.6;
-    const postMinZ = 24 - postLoop; // -225.6..+24
-    let postIdx = 0;
-    for (let i = 0; i < this.postZOffsets.length; i++) {
-      const wrapped = (((this.postZOffsets[i] + engine.worldScrollMeters - postMinZ) % postLoop) + postLoop) % postLoop;
-      const z = postMinZ + wrapped;
-      for (const side of [-1, 1]) {
-        _dummy.position.set(side * (TOTAL_ASPHALT_WIDTH_3D / 2 + 0.35), 0.39, z);
+    if (this.graphicsQuality === 'high') {
+      const lampLoop = 228;
+      const lampMinZ = 20 - lampLoop; // -208..+20
+      let activePointLightIdx = 0;
+      for (let i = 0; i < this.lampPositions.length; i++) {
+        const lp = this.lampPositions[i];
+        const wrapped = (((lp.z + engine.worldScrollMeters - lampMinZ) % lampLoop) + lampLoop) % lampLoop;
+        const z = lampMinZ + wrapped;
+
+        _dummy.position.set(lp.x, 3.1, z);
         _dummy.scale.set(1, 1, 1);
+        _dummy.rotation.set(0, 0, 0);
         _dummy.updateMatrix();
-        this.postPosts.setMatrixAt(postIdx++, _dummy.matrix);
+        this.lampPoles.setMatrixAt(i, _dummy.matrix);
+
+        const headX = lp.x - lp.side * 0.55;
+        _dummy.position.set(headX, 6.1, z);
+        _dummy.updateMatrix();
+        this.lampHeads.setMatrixAt(i, _dummy.matrix);
+
+        _dummy.position.set(headX, 3.05, z);
+        _dummy.updateMatrix();
+        this.lampGlowCones.setMatrixAt(i, _dummy.matrix);
+
+        if (activePointLightIdx < this.lampPointLights.length && z > -65 && z < 14) {
+          this.lampPointLights[activePointLightIdx++].position.set(headX, 5.4, z);
+        }
       }
+      this.lampPoles.instanceMatrix.needsUpdate = true;
+      this.lampHeads.instanceMatrix.needsUpdate = true;
+      this.lampGlowCones.instanceMatrix.needsUpdate = true;
+
+      const postLoop = 249.6;
+      const postMinZ = 24 - postLoop; // -225.6..+24
+      let postIdx = 0;
+      for (let i = 0; i < this.postZOffsets.length; i++) {
+        const wrapped = (((this.postZOffsets[i] + engine.worldScrollMeters - postMinZ) % postLoop) + postLoop) % postLoop;
+        const z = postMinZ + wrapped;
+        for (const side of [-1, 1]) {
+          _dummy.position.set(side * (TOTAL_ASPHALT_WIDTH_3D / 2 + 0.35), 0.39, z);
+          _dummy.scale.set(1, 1, 1);
+          _dummy.updateMatrix();
+          this.postPosts.setMatrixAt(postIdx++, _dummy.matrix);
+        }
+      }
+      this.postPosts.instanceMatrix.needsUpdate = true;
     }
-    this.postPosts.instanceMatrix.needsUpdate = true;
 
     // 3. Player Car Transform, Steering, Lights & Blink
     const blinkHide =
@@ -2451,6 +2517,7 @@ export class Highway3DRenderer {
       let rig = this.trafficRigs.get(car.id);
       if (!rig) {
         rig = buildTrafficCarRig(car, this.shadowTex);
+        this.applyTrafficMaterialQuality(rig, this.graphicsQuality === 'low');
         this.scene.add(rig.group);
         this.trafficRigs.set(car.id, rig);
       }

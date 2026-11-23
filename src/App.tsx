@@ -2,14 +2,17 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera,
   Car,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Coins,
   Flame,
   Gauge,
   Globe,
   Keyboard,
+  Lock,
   Megaphone,
   Monitor,
   Moon,
@@ -67,6 +70,8 @@ interface PersistedSettings {
   graphicsQuality: GraphicsQuality;
   steeringSensitivity: number;
   keyBindings: KeyBindings;
+  walletCash: number;
+  unlockedCars: PlayerCarId[];
 }
 
 function readStoredBestScore(): number {
@@ -111,21 +116,35 @@ function sanitizeKeyBindings(raw: unknown): KeyBindings {
 function readStoredSettings(): PersistedSettings {
   const fallback: PersistedSettings = {
     language: 'ru',
-    selectedCar: 'crimson',
+    selectedCar: 'starter',
     cameraMode: 'third',
     timeOfDay: 'night',
     isMuted: false,
     graphicsQuality: 'high',
     steeringSensitivity: 1.0,
     keyBindings: sanitizeKeyBindings(null),
+    walletCash: 0,
+    unlockedCars: ['starter'],
   };
   try {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<PersistedSettings>;
-    const validCar = PLAYER_CARS.some((c) => c.id === parsed.selectedCar)
-      ? (parsed.selectedCar as PlayerCarId)
-      : fallback.selectedCar;
+
+    const unlockedSet = new Set<PlayerCarId>(['starter']);
+    if (Array.isArray(parsed.unlockedCars)) {
+      for (const id of parsed.unlockedCars) {
+        if (PLAYER_CARS.some((c) => c.id === id)) {
+          unlockedSet.add(id as PlayerCarId);
+        }
+      }
+    }
+    const unlockedCars = Array.from(unlockedSet);
+
+    const validCar =
+      parsed.selectedCar && unlockedSet.has(parsed.selectedCar as PlayerCarId)
+        ? (parsed.selectedCar as PlayerCarId)
+        : fallback.selectedCar;
     const validLang: Language =
       parsed.language === 'ru' || parsed.language === 'de' || parsed.language === 'en'
         ? parsed.language
@@ -146,6 +165,8 @@ function readStoredSettings(): PersistedSettings {
     const validSens = Number.isFinite(rawSens)
       ? Math.max(0.5, Math.min(1.8, Math.round(rawSens * 20) / 20))
       : fallback.steeringSensitivity;
+    const rawCash = typeof parsed.walletCash === 'number' ? Math.floor(parsed.walletCash) : 0;
+    const validCash = Number.isFinite(rawCash) && rawCash >= 0 ? rawCash : 0;
 
     return {
       language: validLang,
@@ -156,6 +177,8 @@ function readStoredSettings(): PersistedSettings {
       graphicsQuality: validQuality,
       steeringSensitivity: validSens,
       keyBindings: sanitizeKeyBindings(parsed.keyBindings),
+      walletCash: validCash,
+      unlockedCars,
     };
   } catch {
     return fallback;
@@ -186,6 +209,8 @@ function getCalloutLabel(key: CalloutKey, t: TranslationBundle): string {
   switch (key) {
     case 'nearMiss':
       return t.calloutNearMiss;
+    case 'distance':
+      return t.calloutDistance;
     case 'nitro':
       return t.calloutNitro;
     case 'repair':
@@ -547,6 +572,9 @@ export default function App() {
   const [selectedCar, setSelectedCar] = useState<PlayerCarId>(initial.selectedCar);
   const selectedCarRef = useRef<PlayerCarId>(initial.selectedCar);
 
+  const [walletCash, setWalletCash] = useState<number>(initial.walletCash);
+  const [unlockedCars, setUnlockedCars] = useState<PlayerCarId[]>(initial.unlockedCars);
+
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initial.timeOfDay);
   const timeOfDayRef = useRef<TimeOfDay>(initial.timeOfDay);
 
@@ -560,7 +588,7 @@ export default function App() {
   const [hud, setHud] = useState<GameHudSnapshot>(() => ({
     score: 0,
     bestScore: readStoredBestScore(),
-    speedKmh: 124,
+    speedKmh: PLAYER_CARS.find((c) => c.id === initial.selectedCar)?.cruiseSpeedKmh ?? 104,
     gear: 3,
     distanceKm: 0,
     lives: MAX_LIVES,
@@ -569,6 +597,7 @@ export default function App() {
     isNitroActive: false,
     nearMissCount: 0,
     overtakenCount: 0,
+    runCash: 0,
   }));
 
   const inputRef = useRef({
@@ -588,7 +617,7 @@ export default function App() {
   const t = TRANSLATIONS[language];
   const numberLocale = language === 'de' ? 'de-DE' : language === 'en' ? 'en-US' : 'ru-RU';
 
-  // Persist user settings whenever they change
+  // Persist user settings and progression whenever they change
   useEffect(() => {
     writeStoredSettings({
       language,
@@ -599,8 +628,21 @@ export default function App() {
       graphicsQuality,
       steeringSensitivity,
       keyBindings,
+      walletCash,
+      unlockedCars,
     });
-  }, [language, selectedCar, cameraMode, timeOfDay, isMuted, graphicsQuality, steeringSensitivity, keyBindings]);
+  }, [
+    language,
+    selectedCar,
+    cameraMode,
+    timeOfDay,
+    isMuted,
+    graphicsQuality,
+    steeringSensitivity,
+    keyBindings,
+    walletCash,
+    unlockedCars,
+  ]);
 
   useEffect(() => {
     engineRef.current?.setSteeringSensitivity(steeringSensitivity);
@@ -711,8 +753,28 @@ export default function App() {
 
   useEffect(() => {
     selectedCarRef.current = selectedCar;
+    const opt = PLAYER_CARS.find((c) => c.id === selectedCar) ?? PLAYER_CARS[0];
+    engineRef.current?.setVehicleSpecs(opt.cruiseSpeedKmh, opt.maxSpeedKmh, opt.nitroSpeedKmh);
     renderer3DRef.current?.applyCarStyle(selectedCar);
   }, [selectedCar]);
+
+  const handleCarOptionClick = useCallback(
+    (carId: PlayerCarId) => {
+      if (unlockedCars.includes(carId)) {
+        setSelectedCar(carId);
+        return;
+      }
+      const car = PLAYER_CARS.find((c) => c.id === carId);
+      if (!car) return;
+      if (walletCash >= car.price) {
+        setWalletCash((prev) => prev - car.price);
+        setUnlockedCars((prev) => (prev.includes(carId) ? prev : [...prev, carId]));
+        setSelectedCar(carId);
+        soundEngine.playPickup();
+      }
+    },
+    [unlockedCars, walletCash]
+  );
 
   useEffect(() => {
     timeOfDayRef.current = timeOfDay;
@@ -904,6 +966,9 @@ export default function App() {
         engine.updateAmbient(dt);
       } else if (currentState === 'PLAYING') {
         const result = engine.update(dt, inputRef.current);
+        if (result.cashDelta > 0) {
+          setWalletCash((prev) => prev + result.cashDelta);
+        }
         if (result.newBest) {
           setIsNewRecord(true);
           writeStoredBestScore(engine.bestScore);
@@ -1077,6 +1142,16 @@ export default function App() {
                 <span className="text-xs font-normal text-slate-400">{t.hudUnitKm}</span>
               </div>
             </div>
+
+            <div>
+              <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-400 leading-none">
+                <Coins className="w-3 h-3 text-emerald-400 hidden sm:inline" />
+                <span>{t.hudCash}</span>
+              </div>
+              <div className="font-mono-tabular text-sm sm:text-base font-bold text-emerald-400 leading-tight">
+                ${walletCash.toLocaleString(numberLocale)}
+              </div>
+            </div>
           </div>
 
           {/* Lives + Nitro */}
@@ -1185,30 +1260,69 @@ export default function App() {
               {menuTab === 'garage' ? (
                 <>
                   <div>
-                    <div className="text-xs font-medium text-slate-400 mb-2">{t.garageTitle}</div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="text-xs font-medium text-slate-400">{t.garageTitle}</span>
+                      <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#171C28] border border-emerald-400/30 text-xs font-mono-tabular font-bold text-emerald-400">
+                        <Coins className="w-3.5 h-3.5" />
+                        <span>
+                          {t.garageBalance}: ${walletCash.toLocaleString(numberLocale)}
+                        </span>
+                      </span>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       {PLAYER_CARS.map((car) => {
+                        const isUnlocked = unlockedCars.includes(car.id);
                         const active = car.id === selectedCar;
+                        const canAfford = walletCash >= car.price;
                         const loc = t.vehicles[car.id];
                         return (
                           <button
                             key={car.id}
                             type="button"
-                            onClick={() => setSelectedCar(car.id)}
-                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                            onClick={() => handleCarOptionClick(car.id)}
+                            title={
+                              !isUnlocked && !canAfford ? t.notEnoughCash : undefined
+                            }
+                            className={`flex items-center gap-2 px-2.5 py-2.5 rounded-xl border text-left transition-colors ${
                               active
-                                ? 'bg-[#202636] border-amber-400/75 text-white'
-                                : 'bg-[#171C28] border-white/10 text-slate-300 hover:bg-[#1E2434]'
-                            } ${car.id === 'tank' ? 'col-span-2' : ''}`}
+                                ? 'bg-[#202636] border-amber-400/75 text-white cursor-pointer'
+                                : isUnlocked
+                                ? 'bg-[#171C28] border-white/10 text-slate-200 hover:bg-[#1E2434] cursor-pointer'
+                                : canAfford
+                                ? 'bg-[#15221E] border-emerald-400/45 text-slate-100 hover:bg-[#192B25] cursor-pointer'
+                                : 'bg-[#131722] border-white/5 text-slate-400 opacity-75 cursor-not-allowed'
+                            }`}
                           >
                             <span
-                              className="w-4 h-6 rounded-sm shrink-0 border border-white/20"
+                              className="w-3.5 h-6 rounded-sm shrink-0 border border-white/20"
                               style={{ backgroundColor: car.bodyColor }}
                             />
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-semibold truncate">{loc.name}</div>
-                              <div className="text-[11px] text-slate-400 truncate">{loc.tag}</div>
+                              <div className="text-xs sm:text-sm font-semibold truncate">
+                                {loc.name}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {loc.tag} · {car.maxSpeedKmh} {t.hudUnitKmh}
+                              </div>
                             </div>
+                            {active ? (
+                              <Check className="w-4 h-4 text-amber-400 shrink-0" />
+                            ) : isUnlocked ? (
+                              <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                                {t.ownedLabel}
+                              </span>
+                            ) : (
+                              <span
+                                className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-mono-tabular font-bold shrink-0 ${
+                                  canAfford
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/40'
+                                    : 'bg-slate-800/80 text-slate-400'
+                                }`}
+                              >
+                                {!canAfford && <Lock className="w-2.5 h-2.5" />}
+                                <span>${car.price.toLocaleString(numberLocale)}</span>
+                              </span>
+                            )}
                           </button>
                         );
                       })}
@@ -1393,6 +1507,20 @@ export default function App() {
                 <div className="text-xs text-slate-400">{t.overtakenRisk}</div>
                 <div className="font-mono-tabular text-base font-semibold text-slate-100 mt-0.5">
                   {hud.overtakenCount} / {hud.nearMissCount}
+                </div>
+              </div>
+              <div className="col-span-2 flex items-center justify-between p-3 rounded-xl bg-[#16221E] border border-emerald-400/25">
+                <div>
+                  <div className="text-xs text-emerald-300/80">{t.runEarned}</div>
+                  <div className="font-mono-tabular text-lg font-bold text-emerald-400">
+                    +${hud.runCash.toLocaleString(numberLocale)}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-slate-400">{t.garageBalance}</div>
+                  <div className="font-mono-tabular text-base font-semibold text-white">
+                    ${walletCash.toLocaleString(numberLocale)}
+                  </div>
                 </div>
               </div>
             </div>

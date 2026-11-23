@@ -140,7 +140,10 @@ export class Highway3DEngine {
   public playerYaw: number = 0;
   public playerRoll: number = 0;
   public steeringSensitivity: number = 1.0;
-  public speedKmh: number = 124;
+  public cruiseSpeedKmh: number = 104;
+  public maxSpeedKmh: number = 150;
+  public nitroSpeedKmh: number = 172;
+  public speedKmh: number = 104;
   public nitro: number = 65;
   public isNitroActive: boolean = false;
   public lives: number = MAX_LIVES;
@@ -149,6 +152,8 @@ export class Highway3DEngine {
   public distanceKm: number = 0;
   public nearMissCount: number = 0;
   public overtakenCount: number = 0;
+  public runCash: number = 0;
+  private nextDistanceCashKm: number = 0.5;
   public invulnerableTimer: number = 0;
   public worldScrollMeters: number = 0;
   public wheelSpinAngle: number = 0;
@@ -173,6 +178,12 @@ export class Highway3DEngine {
   constructor(bestScore: number) {
     this.bestScore = bestScore;
     this.seedAmbientTraffic();
+  }
+
+  public setVehicleSpecs(cruiseSpeedKmh: number, maxSpeedKmh: number, nitroSpeedKmh: number) {
+    this.cruiseSpeedKmh = cruiseSpeedKmh;
+    this.maxSpeedKmh = maxSpeedKmh;
+    this.nitroSpeedKmh = nitroSpeedKmh;
   }
 
   public setSteeringSensitivity(value: number) {
@@ -201,7 +212,7 @@ export class Highway3DEngine {
     this.steerInput = 0;
     this.playerYaw = 0;
     this.playerRoll = 0;
-    this.speedKmh = 124;
+    this.speedKmh = this.cruiseSpeedKmh;
     this.nitro = 65;
     this.isNitroActive = false;
     this.lives = MAX_LIVES;
@@ -209,6 +220,8 @@ export class Highway3DEngine {
     this.distanceKm = 0;
     this.nearMissCount = 0;
     this.overtakenCount = 0;
+    this.runCash = 0;
+    this.nextDistanceCashKm = 0.5;
     this.invulnerableTimer = 0;
     this.shakeTimer = 0;
     this.hornActive = false;
@@ -353,7 +366,9 @@ export class Highway3DEngine {
       steerLeft: boolean;
       steerRight: boolean;
     }
-  ): { crashedOut: boolean; newBest: boolean } {
+  ): { crashedOut: boolean; newBest: boolean; cashDelta: number } {
+    let cashDelta = 0;
+
     // 1. Nitro & Longitudinal Speed
     const wantsNitro = input.nitro && this.nitro > 4;
     if (wantsNitro) {
@@ -365,14 +380,13 @@ export class Highway3DEngine {
       this.nitro = Math.min(100, this.nitro + chargeRate * dt);
     }
 
-    const difficultyBonus = Math.min(28, this.distanceKm * 1.4);
-    let targetSpeed = 124 + difficultyBonus * 0.4;
+    let targetSpeed = this.cruiseSpeedKmh;
     if (this.isNitroActive) {
-      targetSpeed = 268;
+      targetSpeed = this.nitroSpeedKmh;
     } else if (input.accelerate) {
-      targetSpeed = 198 + difficultyBonus * 0.45;
+      targetSpeed = this.maxSpeedKmh;
     } else if (input.brake) {
-      targetSpeed = 88;
+      targetSpeed = 78;
     }
 
     const accelRate = this.isNitroActive ? 290 : input.brake ? 260 : 165;
@@ -435,6 +449,13 @@ export class Highway3DEngine {
     const kmDelta = (this.speedKmh / 3600) * dt;
     this.distanceKm += kmDelta;
     this.score += (this.speedKmh * 0.14 + (this.isNitroActive ? 14 : 0)) * dt;
+
+    while (this.distanceKm >= this.nextDistanceCashKm) {
+      this.nextDistanceCashKm += 0.5;
+      this.runCash += 50;
+      cashDelta += 50;
+      this.emitCallout('distance', '+0.5 км · +$50', 'emerald');
+    }
 
     if (this.invulnerableTimer > 0) {
       this.invulnerableTimer = Math.max(0, this.invulnerableTimer - dt);
@@ -567,15 +588,19 @@ export class Highway3DEngine {
           car.nearMissed = true;
           this.nearMissCount += 1;
           this.score += 50;
+          this.runCash += 20;
+          cashDelta += 20;
           this.nitro = Math.min(100, this.nitro + 18);
           soundEngine.playNearMiss();
-          this.emitCallout('nearMiss', '+50 Опасный обгон', 'amber');
+          this.emitCallout('nearMiss', '+50 Риск · +$20', 'amber');
         }
       }
 
       if (car.z > DESPAWN_Z) {
         this.overtakenCount += 1;
         this.score += 15;
+        this.runCash += 10;
+        cashDelta += 10;
       } else {
         remainingTraffic.push(car);
       }
@@ -633,7 +658,7 @@ export class Highway3DEngine {
       newBest = true;
     }
 
-    return { crashedOut, newBest };
+    return { crashedOut, newBest, cashDelta };
   }
 
   private handleCollision(car: TrafficVehicle) {
@@ -748,6 +773,7 @@ export class Highway3DEngine {
       isNitroActive: this.isNitroActive,
       nearMissCount: this.nearMissCount,
       overtakenCount: this.overtakenCount,
+      runCash: this.runCash,
     };
   }
 }

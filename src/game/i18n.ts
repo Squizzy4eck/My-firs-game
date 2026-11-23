@@ -51,11 +51,18 @@ export interface TranslationBundle {
   // HUD
   hudScore: string;
   hudBest: string;
+  hudCash: string;
   hudSpeed: string;
   hudUnitKmh: string;
   hudDistance: string;
   hudUnitKm: string;
   hudLivesAria: (lives: number, max: number) => string;
+  // Garage Shop / Progression
+  garageBalance: string;
+  ownedLabel: string;
+  buyAction: string;
+  notEnoughCash: string;
+  runEarned: string;
   // Dock
   dockShow: string;
   dockHide: string;
@@ -89,6 +96,7 @@ export interface TranslationBundle {
   cockpitNitro: string;
   // Callouts
   calloutNearMiss: string;
+  calloutDistance: string;
   calloutNitro: string;
   calloutRepair: string;
   calloutBonus: string;
@@ -148,11 +156,17 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     },
     hudScore: 'Очки',
     hudBest: 'Рекорд',
+    hudCash: 'Деньги',
     hudSpeed: 'Скорость',
     hudUnitKmh: 'км/ч',
     hudDistance: 'Дистанция',
     hudUnitKm: 'км',
     hudLivesAria: (lives, max) => `Жизни: ${lives} из ${max}`,
+    garageBalance: 'Баланс',
+    ownedLabel: 'Куплено',
+    buyAction: 'Купить',
+    notEnoughCash: 'Мало денег',
+    runEarned: 'Заработано',
     dockShow: 'Показать управление',
     dockHide: 'Скрыть панель',
     dockLeft: 'Влево',
@@ -182,19 +196,21 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     reloadBtn: 'Перезагрузить',
     cockpitGear: 'ПЕРЕДАЧА',
     cockpitNitro: 'НИТРО',
-    calloutNearMiss: '+50 Опасный обгон',
+    calloutNearMiss: '+50 Риск · +$20',
+    calloutDistance: '+0.5 км · +$50',
     calloutNitro: '+Нитро заряд',
     calloutRepair: '+1 Жизнь',
     calloutBonus: '+60 Бонус',
     calloutHit: 'Столкновение!',
     calloutCrash: 'Авария!',
     vehicles: {
+      starter: { name: 'Классик Седан', tag: 'Базовый' },
       crimson: { name: 'Спорткар', tag: 'Купе' },
-      cobalt: { name: 'Гиперкар GT', tag: 'Аэро' },
+      pickup: { name: 'Пикап Трак', tag: 'Тягач' },
       amber: { name: 'Маслкар V8', tag: 'Нагнетатель' },
       emerald: { name: 'Внедорожник', tag: '4×4' },
       police: { name: 'Полиция', tag: 'Мигалки' },
-      pickup: { name: 'Пикап Трак', tag: 'Тягач' },
+      cobalt: { name: 'Гиперкар GT', tag: 'Аэро' },
       tank: { name: 'Боевой танк', tag: 'Броня' },
     },
   },
@@ -247,11 +263,17 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     },
     hudScore: 'Punkte',
     hudBest: 'Rekord',
+    hudCash: 'Geld',
     hudSpeed: 'Tempo',
     hudUnitKmh: 'km/h',
     hudDistance: 'Distanz',
     hudUnitKm: 'km',
     hudLivesAria: (lives, max) => `Leben: ${lives} von ${max}`,
+    garageBalance: 'Guthaben',
+    ownedLabel: 'Gekauft',
+    buyAction: 'Kaufen',
+    notEnoughCash: 'Zu wenig Geld',
+    runEarned: 'Verdient',
     dockShow: 'Steuerung zeigen',
     dockHide: 'Leiste ausblenden',
     dockLeft: 'Links',
@@ -281,19 +303,21 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     reloadBtn: 'Neu laden',
     cockpitGear: 'GANG',
     cockpitNitro: 'NITRO',
-    calloutNearMiss: '+50 Knapp vorbei',
+    calloutNearMiss: '+50 Knapp · +$20',
+    calloutDistance: '+0.5 km · +$50',
     calloutNitro: '+Nitro-Ladung',
     calloutRepair: '+1 Leben',
     calloutBonus: '+60 Bonus',
     calloutHit: 'Kollision!',
     calloutCrash: 'Unfall!',
     vehicles: {
+      starter: { name: 'Basis-Limousine', tag: 'Standard' },
       crimson: { name: 'Sportwagen', tag: 'Coupé' },
-      cobalt: { name: 'Hypercar GT', tag: 'Aero' },
+      pickup: { name: 'Pickup-Truck', tag: 'Schwer' },
       amber: { name: 'Muscle V8', tag: 'Kompressor' },
       emerald: { name: 'Geländewagen', tag: '4×4' },
       police: { name: 'Polizei', tag: 'Blaulicht' },
-      pickup: { name: 'Pickup-Truck', tag: 'Schwer' },
+      cobalt: { name: 'Hypercar GT', tag: 'Aero' },
       tank: { name: 'Kampfpanzer', tag: 'Panzerung' },
     },
   },
@@ -346,11 +370,17 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     },
     hudScore: 'Score',
     hudBest: 'Best',
+    hudCash: 'Cash',
     hudSpeed: 'Speed',
     hudUnitKmh: 'km/h',
     hudDistance: 'Distance',
     hudUnitKm: 'km',
     hudLivesAria: (lives, max) => `Lives: ${lives} of ${max}`,
+    garageBalance: 'Balance',
+    ownedLabel: 'Owned',
+    buyAction: 'Buy',
+    notEnoughCash: 'Need cash',
+    runEarned: 'Earned',
     dockShow: 'Show Controls',
     dockHide: 'Hide Panel',
     dockLeft: 'Left',
@@ -380,19 +410,21 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     reloadBtn: 'Reload',
     cockpitGear: 'GEAR',
     cockpitNitro: 'NITRO',
-    calloutNearMiss: '+50 Near Miss',
+    calloutNearMiss: '+50 Near Miss · +$20',
+    calloutDistance: '+0.5 km · +$50',
     calloutNitro: '+Nitro Boost',
     calloutRepair: '+1 Life',
     calloutBonus: '+60 Bonus',
     calloutHit: 'Collision!',
     calloutCrash: 'Wrecked!',
     vehicles: {
+      starter: { name: 'Classic Sedan', tag: 'Starter' },
       crimson: { name: 'Sportcar', tag: 'Coupe' },
-      cobalt: { name: 'Hypercar GT', tag: 'Aero' },
+      pickup: { name: 'Heavy Pickup', tag: 'Truck' },
       amber: { name: 'Muscle V8', tag: 'Blower' },
       emerald: { name: 'Off-Roader', tag: '4×4' },
       police: { name: 'Police Cruiser', tag: 'Siren' },
-      pickup: { name: 'Heavy Pickup', tag: 'Truck' },
+      cobalt: { name: 'Hypercar GT', tag: 'Aero' },
       tank: { name: 'Battle Tank', tag: 'Armored' },
     },
   },
