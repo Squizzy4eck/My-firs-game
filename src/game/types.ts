@@ -6,48 +6,118 @@ export type CameraMode = 'third' | 'first';
 
 export type TimeOfDay = 'night' | 'day';
 
-export type PlayerCarId = 'crimson' | 'cobalt' | 'amber' | 'emerald';
+export type PlayerCarId =
+  | 'crimson'
+  | 'cobalt'
+  | 'amber'
+  | 'emerald'
+  | 'police'
+  | 'pickup'
+  | 'tank';
+
+export type PlayerArchetype =
+  | 'sport'
+  | 'hyper'
+  | 'muscle'
+  | 'suv'
+  | 'police'
+  | 'pickup'
+  | 'tank';
 
 export interface PlayerCarOption {
   id: PlayerCarId;
+  archetype: PlayerArchetype;
   name: string;
   bodyColor: string;
   accentColor: string;
   stripeColor: string;
+  cockpitOffsetY: number;
+  cockpitOffsetZ: number;
 }
 
 export const PLAYER_CARS: PlayerCarOption[] = [
   {
     id: 'crimson',
+    archetype: 'sport',
     name: 'Спорткар',
     bodyColor: '#DC2626',
     accentColor: '#991B1B',
     stripeColor: '#F8FAFC',
+    cockpitOffsetY: 0,
+    cockpitOffsetZ: 0,
   },
   {
     id: 'cobalt',
-    name: 'Купе GT',
+    archetype: 'hyper',
+    name: 'Гиперкар GT',
     bodyColor: '#2563EB',
-    accentColor: '#1E40AF',
+    accentColor: '#1E3A8A',
     stripeColor: '#FACC15',
+    cockpitOffsetY: -0.05,
+    cockpitOffsetZ: -0.04,
   },
   {
     id: 'amber',
-    name: 'Маслкар',
+    archetype: 'muscle',
+    name: 'Маслкар V8',
     bodyColor: '#D97706',
-    accentColor: '#92400E',
+    accentColor: '#78350F',
     stripeColor: '#111827',
+    cockpitOffsetY: 0.02,
+    cockpitOffsetZ: 0.02,
   },
   {
     id: 'emerald',
-    name: 'Родстер',
+    archetype: 'suv',
+    name: 'Внедорожник',
     bodyColor: '#059669',
-    accentColor: '#065F46',
+    accentColor: '#064E3B',
     stripeColor: '#E2E8F0',
+    cockpitOffsetY: 0.18,
+    cockpitOffsetZ: -0.02,
+  },
+  {
+    id: 'police',
+    archetype: 'police',
+    name: 'Полиция',
+    bodyColor: '#111827',
+    accentColor: '#1E293B',
+    stripeColor: '#F8FAFC',
+    cockpitOffsetY: 0.02,
+    cockpitOffsetZ: 0,
+  },
+  {
+    id: 'pickup',
+    archetype: 'pickup',
+    name: 'Пикап Трак',
+    bodyColor: '#7C3AED',
+    accentColor: '#4C1D95',
+    stripeColor: '#E2E8F0',
+    cockpitOffsetY: 0.24,
+    cockpitOffsetZ: -0.08,
+  },
+  {
+    id: 'tank',
+    archetype: 'tank',
+    name: 'Боевой танк',
+    bodyColor: '#4B5842',
+    accentColor: '#2F3829',
+    stripeColor: '#D97706',
+    cockpitOffsetY: 0.26,
+    cockpitOffsetZ: -0.14,
   },
 ];
 
-export type TrafficKind = 'sedan' | 'taxi' | 'suv' | 'coupe' | 'truck';
+export type TrafficKind =
+  | 'sedan'
+  | 'taxi'
+  | 'suv'
+  | 'coupe'
+  | 'truck'
+  | 'van'
+  | 'sport'
+  | 'police'
+  | 'bus';
 
 export interface TrafficVehicle {
   id: number;
@@ -91,8 +161,17 @@ export interface Particle3D {
   color: string;
 }
 
+export type CalloutKey =
+  | 'nearMiss'
+  | 'nitro'
+  | 'repair'
+  | 'bonus'
+  | 'hit'
+  | 'crash';
+
 export interface CalloutNotice {
   id: number;
+  key: CalloutKey;
   text: string;
   tone: 'amber' | 'sky' | 'emerald' | 'red';
 }
@@ -126,3 +205,61 @@ export const MAX_LIVES = 3;
 export function getLaneX3D(lane: LaneIndex): number {
   return (lane - 1) * LANE_WIDTH_3D; // -3.8, 0, +3.8
 }
+
+export type GraphicsQuality = 'high' | 'low';
+
+export type ControlAction =
+  | 'steerLeft'
+  | 'steerRight'
+  | 'accelerate'
+  | 'brake'
+  | 'nitro'
+  | 'horn'
+  | 'camera';
+
+export type ControlPresetId = 'both' | 'wasd' | 'arrows' | 'custom';
+
+export type KeyBindings = Record<ControlAction, string[]>;
+
+export const CONTROL_ACTIONS_ORDER: ControlAction[] = [
+  'steerLeft',
+  'steerRight',
+  'accelerate',
+  'brake',
+  'nitro',
+  'horn',
+  'camera',
+];
+
+export const DEFAULT_KEY_BINDINGS: KeyBindings = {
+  steerLeft: ['KeyA', 'ArrowLeft'],
+  steerRight: ['KeyD', 'ArrowRight'],
+  accelerate: ['KeyW', 'ArrowUp'],
+  brake: ['KeyS', 'ArrowDown'],
+  nitro: ['Space', 'ShiftLeft', 'ShiftRight'],
+  horn: ['KeyH'],
+  camera: ['KeyC'],
+};
+
+export const CONTROL_PRESETS: Record<Exclude<ControlPresetId, 'custom'>, KeyBindings> = {
+  both: DEFAULT_KEY_BINDINGS,
+  wasd: {
+    steerLeft: ['KeyA'],
+    steerRight: ['KeyD'],
+    accelerate: ['KeyW'],
+    brake: ['KeyS'],
+    nitro: ['Space', 'ShiftLeft'],
+    horn: ['KeyH'],
+    camera: ['KeyC'],
+  },
+  arrows: {
+    steerLeft: ['ArrowLeft'],
+    steerRight: ['ArrowRight'],
+    accelerate: ['ArrowUp'],
+    brake: ['ArrowDown'],
+    nitro: ['Space', 'ShiftRight'],
+    horn: ['KeyH'],
+    camera: ['KeyC'],
+  },
+};
+

@@ -1,5 +1,6 @@
 import { soundEngine } from './sound';
 import {
+  CalloutKey,
   CalloutNotice,
   DESPAWN_Z,
   GameHudSnapshot,
@@ -86,6 +87,49 @@ const TRAFFIC_BLUEPRINTS: TrafficBlueprint3D[] = [
       { body: '#E2E8F0', roof: '#047857' },
     ],
   },
+  {
+    kind: 'van',
+    width: 2.15,
+    length: 5.2,
+    minSpeed: 54,
+    maxSpeed: 68,
+    colors: [
+      { body: '#F1F5F9', roof: '#CBD5E1' },
+      { body: '#1E40AF', roof: '#1E3A8A' },
+      { body: '#D97706', roof: '#B45309' },
+    ],
+  },
+  {
+    kind: 'sport',
+    width: 2.04,
+    length: 4.35,
+    minSpeed: 72,
+    maxSpeed: 88,
+    colors: [
+      { body: '#EF4444', roof: '#B91C1C' },
+      { body: '#10B981', roof: '#047857' },
+      { body: '#F97316', roof: '#C2410C' },
+    ],
+  },
+  {
+    kind: 'police',
+    width: 2.0,
+    length: 4.5,
+    minSpeed: 68,
+    maxSpeed: 82,
+    colors: [{ body: '#111827', roof: '#F8FAFC' }],
+  },
+  {
+    kind: 'bus',
+    width: 2.48,
+    length: 9.2,
+    minSpeed: 42,
+    maxSpeed: 54,
+    colors: [
+      { body: '#F59E0B', roof: '#D97706' },
+      { body: '#0284C7', roof: '#E0F2FE' },
+    ],
+  },
 ];
 
 export class Highway3DEngine {
@@ -95,6 +139,7 @@ export class Highway3DEngine {
   public steerInput: number = 0;
   public playerYaw: number = 0;
   public playerRoll: number = 0;
+  public steeringSensitivity: number = 1.0;
   public speedKmh: number = 124;
   public nitro: number = 65;
   public isNitroActive: boolean = false;
@@ -130,6 +175,11 @@ export class Highway3DEngine {
     this.seedAmbientTraffic();
   }
 
+  public setSteeringSensitivity(value: number) {
+    if (!Number.isFinite(value)) return;
+    this.steeringSensitivity = Math.max(0.5, Math.min(1.8, value));
+  }
+
   public onCallout(cb: (c: CalloutNotice) => void): () => void {
     this.calloutListeners.push(cb);
     return () => {
@@ -137,8 +187,8 @@ export class Highway3DEngine {
     };
   }
 
-  private emitCallout(text: string, tone: CalloutNotice['tone']) {
-    const notice: CalloutNotice = { id: this.nextId++, text, tone };
+  private emitCallout(key: CalloutKey, text: string, tone: CalloutNotice['tone']) {
+    const notice: CalloutNotice = { id: this.nextId++, key, text, tone };
     for (const cb of this.calloutListeners) {
       cb(notice);
     }
@@ -333,15 +383,18 @@ export class Highway3DEngine {
     }
 
     // 2. Realistic Speed-Coupled Steering Physics across full highway width
+    const sens = this.steeringSensitivity;
     const steerDir = (input.steerRight ? 1 : 0) - (input.steerLeft ? 1 : 0);
-    const steerRate = steerDir !== 0 ? 5.2 : 6.8;
+    const steerRate = steerDir !== 0 ? 2.4 + 2.8 * sens : 6.8;
     this.steerInput += (steerDir - this.steerInput) * (1 - Math.exp(-steerRate * dt));
 
     const speedMps = Math.max(15, this.speedKmh * KMH_TO_MPS);
-    // Speed-sensitive max yaw (~9.5 deg at 124 km/h, firmer at 200+ km/h, wider at lower speed)
-    const maxYaw = Math.max(0.115, Math.min(0.22, 0.165 * Math.pow(40 / speedMps, 0.5)));
+    // Speed-sensitive max yaw scaled by user steering sensitivity
+    const baseMaxYaw = Math.max(0.115, Math.min(0.22, 0.165 * Math.pow(40 / speedMps, 0.5)));
+    const maxYaw = Math.min(0.34, baseMaxYaw * sens);
     const targetYaw = -this.steerInput * maxYaw;
-    const yawBlend = 1 - Math.exp(-(steerDir !== 0 ? 6.5 : 8.5) * dt);
+    const yawRate = steerDir !== 0 ? 3.2 + 3.3 * sens : 8.5;
+    const yawBlend = 1 - Math.exp(-yawRate * dt);
     this.playerYaw += (targetYaw - this.playerYaw) * yawBlend;
 
     // Car moves in the direction its nose is pointing (tire compliance lag)
@@ -516,7 +569,7 @@ export class Highway3DEngine {
           this.score += 50;
           this.nitro = Math.min(100, this.nitro + 18);
           soundEngine.playNearMiss();
-          this.emitCallout('+50 Опасный обгон', 'amber');
+          this.emitCallout('nearMiss', '+50 Опасный обгон', 'amber');
         }
       }
 
@@ -541,14 +594,14 @@ export class Highway3DEngine {
         if (item.kind === 'nitro') {
           this.nitro = Math.min(100, this.nitro + 36);
           this.score += 30;
-          this.emitCallout('+Нитро заряд', 'sky');
+          this.emitCallout('nitro', '+Нитро заряд', 'sky');
         } else {
           if (this.lives < MAX_LIVES) {
             this.lives += 1;
-            this.emitCallout('+1 Жизнь', 'emerald');
+            this.emitCallout('repair', '+1 Жизнь', 'emerald');
           } else {
             this.score += 60;
-            this.emitCallout('+60 Бонус', 'emerald');
+            this.emitCallout('bonus', '+60 Бонус', 'emerald');
           }
         }
       } else if (item.z < DESPAWN_Z) {
@@ -610,7 +663,7 @@ export class Highway3DEngine {
       });
     }
 
-    this.emitCallout(this.lives > 0 ? 'Столкновение!' : 'Авария!', 'red');
+    this.emitCallout(this.lives > 0 ? 'hit' : 'crash', this.lives > 0 ? 'Столкновение!' : 'Авария!', 'red');
   }
 
   private trySpawnTraffic() {

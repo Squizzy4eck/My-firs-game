@@ -1,31 +1,54 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Camera,
+  Car,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
   Flame,
   Gauge,
+  Globe,
+  Keyboard,
   Megaphone,
+  Monitor,
   Moon,
   Pause,
   Play,
   RotateCcw,
+  Settings,
   Shield,
+  SlidersHorizontal,
   Sun,
   Volume2,
   VolumeX,
   Zap,
 } from 'lucide-react';
 import { Highway3DEngine } from './game/engine';
+import {
+  formatControlsHint,
+  formatKeyCode,
+  formatKeyList,
+  LANGUAGE_OPTIONS,
+  Language,
+  TRANSLATIONS,
+  TranslationBundle,
+} from './game/i18n';
 import { soundEngine } from './game/sound';
 import { Highway3DRenderer } from './game/threeScene';
 import {
+  CONTROL_ACTIONS_ORDER,
+  CONTROL_PRESETS,
+  CalloutKey,
   CalloutNotice,
   CameraMode,
+  ControlAction,
+  ControlPresetId,
+  DEFAULT_KEY_BINDINGS,
   GameHudSnapshot,
   GameState,
+  GraphicsQuality,
+  KeyBindings,
   MAX_LIVES,
   PLAYER_CARS,
   PlayerCarId,
@@ -33,6 +56,18 @@ import {
 } from './game/types';
 
 const BEST_SCORE_STORAGE_KEY = 'trassa3_3d_best_score_v1';
+const SETTINGS_STORAGE_KEY = 'trassa3_settings_v1';
+
+interface PersistedSettings {
+  language: Language;
+  selectedCar: PlayerCarId;
+  cameraMode: CameraMode;
+  timeOfDay: TimeOfDay;
+  isMuted: boolean;
+  graphicsQuality: GraphicsQuality;
+  steeringSensitivity: number;
+  keyBindings: KeyBindings;
+}
 
 function readStoredBestScore(): number {
   try {
@@ -52,7 +87,438 @@ function writeStoredBestScore(score: number) {
   }
 }
 
+function sanitizeKeyBindings(raw: unknown): KeyBindings {
+  const result: KeyBindings = {
+    steerLeft: [...DEFAULT_KEY_BINDINGS.steerLeft],
+    steerRight: [...DEFAULT_KEY_BINDINGS.steerRight],
+    accelerate: [...DEFAULT_KEY_BINDINGS.accelerate],
+    brake: [...DEFAULT_KEY_BINDINGS.brake],
+    nitro: [...DEFAULT_KEY_BINDINGS.nitro],
+    horn: [...DEFAULT_KEY_BINDINGS.horn],
+    camera: [...DEFAULT_KEY_BINDINGS.camera],
+  };
+  if (!raw || typeof raw !== 'object') return result;
+  const obj = raw as Record<string, unknown>;
+  for (const action of CONTROL_ACTIONS_ORDER) {
+    const val = obj[action];
+    if (Array.isArray(val)) {
+      result[action] = val.filter((k): k is string => typeof k === 'string' && k.length > 0);
+    }
+  }
+  return result;
+}
+
+function readStoredSettings(): PersistedSettings {
+  const fallback: PersistedSettings = {
+    language: 'ru',
+    selectedCar: 'crimson',
+    cameraMode: 'third',
+    timeOfDay: 'night',
+    isMuted: false,
+    graphicsQuality: 'high',
+    steeringSensitivity: 1.0,
+    keyBindings: sanitizeKeyBindings(null),
+  };
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<PersistedSettings>;
+    const validCar = PLAYER_CARS.some((c) => c.id === parsed.selectedCar)
+      ? (parsed.selectedCar as PlayerCarId)
+      : fallback.selectedCar;
+    const validLang: Language =
+      parsed.language === 'ru' || parsed.language === 'de' || parsed.language === 'en'
+        ? parsed.language
+        : fallback.language;
+    const validCam: CameraMode =
+      parsed.cameraMode === 'first' || parsed.cameraMode === 'third'
+        ? parsed.cameraMode
+        : fallback.cameraMode;
+    const validTod: TimeOfDay =
+      parsed.timeOfDay === 'day' || parsed.timeOfDay === 'night'
+        ? parsed.timeOfDay
+        : fallback.timeOfDay;
+    const validQuality: GraphicsQuality =
+      parsed.graphicsQuality === 'low' || parsed.graphicsQuality === 'high'
+        ? parsed.graphicsQuality
+        : fallback.graphicsQuality;
+    const rawSens = typeof parsed.steeringSensitivity === 'number' ? parsed.steeringSensitivity : 1.0;
+    const validSens = Number.isFinite(rawSens)
+      ? Math.max(0.5, Math.min(1.8, Math.round(rawSens * 20) / 20))
+      : fallback.steeringSensitivity;
+
+    return {
+      language: validLang,
+      selectedCar: validCar,
+      cameraMode: validCam,
+      timeOfDay: validTod,
+      isMuted: Boolean(parsed.isMuted),
+      graphicsQuality: validQuality,
+      steeringSensitivity: validSens,
+      keyBindings: sanitizeKeyBindings(parsed.keyBindings),
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStoredSettings(settings: PersistedSettings) {
+  try {
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function detectControlPreset(bindings: KeyBindings): ControlPresetId {
+  const eq = (a: string[], b: string[]) =>
+    a.length === b.length && a.every((v, idx) => v === b[idx]);
+  for (const presetId of ['both', 'wasd', 'arrows'] as const) {
+    const preset = CONTROL_PRESETS[presetId];
+    if (CONTROL_ACTIONS_ORDER.every((act) => eq(bindings[act], preset[act]))) {
+      return presetId;
+    }
+  }
+  return 'custom';
+}
+
+function getCalloutLabel(key: CalloutKey, t: TranslationBundle): string {
+  switch (key) {
+    case 'nearMiss':
+      return t.calloutNearMiss;
+    case 'nitro':
+      return t.calloutNitro;
+    case 'repair':
+      return t.calloutRepair;
+    case 'bonus':
+      return t.calloutBonus;
+    case 'hit':
+      return t.calloutHit;
+    case 'crash':
+      return t.calloutCrash;
+  }
+}
+
+interface SettingsPanelProps {
+  t: TranslationBundle;
+  language: Language;
+  setLanguage: (lang: Language) => void;
+  graphicsQuality: GraphicsQuality;
+  setGraphicsQuality: (q: GraphicsQuality) => void;
+  cameraMode: CameraMode;
+  setCameraModeDirect: (mode: CameraMode) => void;
+  timeOfDay: TimeOfDay;
+  setTimeOfDay: (tod: TimeOfDay) => void;
+  isMuted: boolean;
+  toggleMute: () => void;
+  steeringSensitivity: number;
+  setSteeringSensitivity: (value: number) => void;
+  keyBindings: KeyBindings;
+  setKeyBindings: (next: KeyBindings) => void;
+  listeningAction: ControlAction | null;
+  setListeningAction: (action: ControlAction | null) => void;
+}
+
+function SettingsPanel({
+  t,
+  language,
+  setLanguage,
+  graphicsQuality,
+  setGraphicsQuality,
+  cameraMode,
+  setCameraModeDirect,
+  timeOfDay,
+  setTimeOfDay,
+  isMuted,
+  toggleMute,
+  steeringSensitivity,
+  setSteeringSensitivity,
+  keyBindings,
+  setKeyBindings,
+  listeningAction,
+  setListeningAction,
+}: SettingsPanelProps) {
+  const activePreset = detectControlPreset(keyBindings);
+  const sensPct = Math.round(steeringSensitivity * 100);
+
+  return (
+    <div className="space-y-4">
+      {/* Language */}
+      <div>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-1.5">
+          <Globe className="w-3.5 h-3.5 text-amber-400" />
+          <span>{t.settingLanguage}</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5 p-1 bg-[#171C28] border border-white/10 rounded-xl">
+          {LANGUAGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setLanguage(opt.id)}
+              className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                language === opt.id
+                  ? 'bg-[#262E40] text-white border border-amber-400/50'
+                  : 'text-slate-400 hover:text-white border border-transparent'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Graphics Quality + Sound */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-1.5">
+            <Monitor className="w-3.5 h-3.5 text-sky-400" />
+            <span>{t.settingGraphics}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setGraphicsQuality('high')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                graphicsQuality === 'high' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.graphicsHigh}
+            </button>
+            <button
+              type="button"
+              onClick={() => setGraphicsQuality('low')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                graphicsQuality === 'low' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.graphicsLow}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400 mb-1.5">
+            {isMuted ? (
+              <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+            ) : (
+              <Volume2 className="w-3.5 h-3.5 text-emerald-400" />
+            )}
+            <span>{t.settingSound}</span>
+          </div>
+          <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
+            <button
+              type="button"
+              onClick={() => {
+                if (isMuted) toggleMute();
+              }}
+              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                !isMuted ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.soundOn}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!isMuted) toggleMute();
+              }}
+              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                isMuted ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.soundOff}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Camera & Lighting */}
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <div className="text-xs font-medium text-slate-400 mb-1.5">{t.settingCamera}</div>
+          <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setCameraModeDirect('third')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                cameraMode === 'third' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.cameraThird}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCameraModeDirect('first')}
+              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                cameraMode === 'first' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.cameraFirst}
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs font-medium text-slate-400 mb-1.5">{t.settingLighting}</div>
+          <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setTimeOfDay('night')}
+              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                timeOfDay === 'night' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Moon className="w-3.5 h-3.5" />
+              <span>{t.lightingNight}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimeOfDay('day')}
+              className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                timeOfDay === 'day' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span>{t.lightingDay}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Steering Sensitivity */}
+      <div className="pt-1 border-t border-white/10">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+            <span>{t.settingSteeringSensitivity}</span>
+          </div>
+          <span className="font-mono-tabular text-xs font-bold text-amber-400">{sensPct}%</span>
+        </div>
+
+        <div className="p-2.5 rounded-xl bg-[#171C28] border border-white/10 space-y-2.5">
+          <input
+            type="range"
+            min={0.5}
+            max={1.8}
+            step={0.05}
+            value={steeringSensitivity}
+            onChange={(e) => setSteeringSensitivity(parseFloat(e.target.value))}
+            aria-label={t.settingSteeringSensitivity}
+            className="w-full h-1.5 rounded-lg bg-[#262E40] accent-amber-400 cursor-pointer"
+          />
+          <div className="grid grid-cols-3 gap-1">
+            {(
+              [
+                [0.7, t.steeringSoft],
+                [1.0, t.steeringNormal],
+                [1.45, t.steeringSharp],
+              ] as const
+            ).map(([val, label]) => {
+              const isMatch = Math.abs(steeringSensitivity - val) < 0.03;
+              return (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setSteeringSensitivity(val)}
+                  className={`py-1 px-2 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
+                    isMatch
+                      ? 'bg-[#262E40] text-white'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Controls Customization */}
+      <div className="pt-1 border-t border-white/10">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
+            <Keyboard className="w-3.5 h-3.5 text-amber-400" />
+            <span>{t.settingControls}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setListeningAction(null);
+              setKeyBindings(sanitizeKeyBindings(DEFAULT_KEY_BINDINGS));
+            }}
+            className="text-[11px] font-medium text-slate-400 hover:text-amber-300 transition-colors cursor-pointer"
+          >
+            {t.resetControls}
+          </button>
+        </div>
+
+        {/* Presets */}
+        <div className="grid grid-cols-3 gap-1 p-1 mb-2.5 bg-[#171C28] border border-white/10 rounded-xl">
+          {(
+            [
+              ['both', t.presetBoth],
+              ['wasd', t.presetWasd],
+              ['arrows', t.presetArrows],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                setListeningAction(null);
+                setKeyBindings(sanitizeKeyBindings(CONTROL_PRESETS[id]));
+              }}
+              className={`py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                activePreset === id
+                  ? 'bg-[#262E40] text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Individual Keybind Rows */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          {CONTROL_ACTIONS_ORDER.map((action) => {
+            const isListening = listeningAction === action;
+            return (
+              <div
+                key={action}
+                className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-[#171C28] border border-white/10"
+              >
+                <span className="text-xs text-slate-300 truncate">
+                  {t.controlActions[action]}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setListeningAction(isListening ? null : action)}
+                  className={`px-2 py-1 rounded-md text-[11px] font-mono-tabular font-semibold transition-colors cursor-pointer shrink-0 ${
+                    isListening
+                      ? 'bg-amber-500 text-slate-950 animate-pulse'
+                      : 'bg-[#232B3D] hover:bg-[#2F3950] text-amber-300 border border-white/10'
+                  }`}
+                >
+                  {isListening ? t.pressKeyPrompt : formatKeyList(keyBindings[action], language)}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const initialSettingsRef = useRef<PersistedSettings | null>(null);
+  if (!initialSettingsRef.current) {
+    initialSettingsRef.current = readStoredSettings();
+  }
+  const initial = initialSettingsRef.current;
+
   const mountRef = useRef<HTMLDivElement | null>(null);
   const renderer3DRef = useRef<Highway3DRenderer | null>(null);
   const engineRef = useRef<Highway3DEngine | null>(null);
@@ -60,16 +526,31 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState>('TITLE_MENU');
   const gameStateRef = useRef<GameState>('TITLE_MENU');
 
-  const [cameraMode, setCameraMode] = useState<CameraMode>('third');
-  const cameraModeRef = useRef<CameraMode>('third');
+  const [menuTab, setMenuTab] = useState<'garage' | 'settings'>('garage');
+  const [pauseSubView, setPauseSubView] = useState<'menu' | 'settings'>('menu');
 
-  const [selectedCar, setSelectedCar] = useState<PlayerCarId>('crimson');
-  const selectedCarRef = useRef<PlayerCarId>('crimson');
+  const [language, setLanguage] = useState<Language>(initial.language);
+  const [graphicsQuality, setGraphicsQuality] = useState<GraphicsQuality>(initial.graphicsQuality);
+  const graphicsQualityRef = useRef<GraphicsQuality>(initial.graphicsQuality);
 
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('night');
-  const timeOfDayRef = useRef<TimeOfDay>('night');
+  const [steeringSensitivity, setSteeringSensitivity] = useState<number>(initial.steeringSensitivity);
 
-  const [isMuted, setIsMuted] = useState<boolean>(false);
+  const [keyBindings, setKeyBindings] = useState<KeyBindings>(initial.keyBindings);
+  const keyBindingsRef = useRef<KeyBindings>(initial.keyBindings);
+
+  const [listeningAction, setListeningAction] = useState<ControlAction | null>(null);
+  const listeningActionRef = useRef<ControlAction | null>(null);
+
+  const [cameraMode, setCameraMode] = useState<CameraMode>(initial.cameraMode);
+  const cameraModeRef = useRef<CameraMode>(initial.cameraMode);
+
+  const [selectedCar, setSelectedCar] = useState<PlayerCarId>(initial.selectedCar);
+  const selectedCarRef = useRef<PlayerCarId>(initial.selectedCar);
+
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initial.timeOfDay);
+  const timeOfDayRef = useRef<TimeOfDay>(initial.timeOfDay);
+
+  const [isMuted, setIsMuted] = useState<boolean>(initial.isMuted);
   const [isHornActive, setIsHornActive] = useState<boolean>(false);
   const [dockCollapsed, setDockCollapsed] = useState<boolean>(false);
   const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
@@ -104,9 +585,57 @@ export default function App() {
     engineRef.current = new Highway3DEngine(readStoredBestScore());
   }
 
+  const t = TRANSLATIONS[language];
+  const numberLocale = language === 'de' ? 'de-DE' : language === 'en' ? 'en-US' : 'ru-RU';
+
+  // Persist user settings whenever they change
+  useEffect(() => {
+    writeStoredSettings({
+      language,
+      selectedCar,
+      cameraMode,
+      timeOfDay,
+      isMuted,
+      graphicsQuality,
+      steeringSensitivity,
+      keyBindings,
+    });
+  }, [language, selectedCar, cameraMode, timeOfDay, isMuted, graphicsQuality, steeringSensitivity, keyBindings]);
+
+  useEffect(() => {
+    engineRef.current?.setSteeringSensitivity(steeringSensitivity);
+  }, [steeringSensitivity]);
+
+  useEffect(() => {
+    keyBindingsRef.current = keyBindings;
+  }, [keyBindings]);
+
+  useEffect(() => {
+    listeningActionRef.current = listeningAction;
+  }, [listeningAction]);
+
+  useEffect(() => {
+    document.title = t.appName;
+    renderer3DRef.current?.applyLanguage(language);
+  }, [language, t.appName]);
+
+  useEffect(() => {
+    graphicsQualityRef.current = graphicsQuality;
+    renderer3DRef.current?.applyGraphicsQuality(graphicsQuality);
+  }, [graphicsQuality]);
+
+  useEffect(() => {
+    soundEngine.setMuted(isMuted);
+  }, [isMuted]);
+
   const syncGameState = useCallback((next: GameState) => {
     gameStateRef.current = next;
     setGameState(next);
+  }, []);
+
+  const setCameraModeDirect = useCallback((mode: CameraMode) => {
+    cameraModeRef.current = mode;
+    setCameraMode(mode);
   }, []);
 
   const toggleCameraMode = useCallback(() => {
@@ -126,6 +655,8 @@ export default function App() {
   const startGame = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
+    setListeningAction(null);
+    setPauseSubView('menu');
     engine.resetRun();
     setIsNewRecord(false);
     setCallouts([]);
@@ -137,12 +668,15 @@ export default function App() {
   }, [syncGameState]);
 
   const togglePause = useCallback(() => {
+    setListeningAction(null);
     if (gameStateRef.current === 'PLAYING') {
       engineRef.current?.setHorn(false);
       setIsHornActive(false);
       soundEngine.stopEngine();
+      setPauseSubView('menu');
       syncGameState('PAUSED');
     } else if (gameStateRef.current === 'PAUSED') {
+      setPauseSubView('menu');
       syncGameState('PLAYING');
       if (!soundEngine.isMuted()) {
         soundEngine.startEngine();
@@ -151,6 +685,9 @@ export default function App() {
   }, [syncGameState]);
 
   const returnToMenu = useCallback(() => {
+    setListeningAction(null);
+    setPauseSubView('menu');
+    setMenuTab('garage');
     engineRef.current?.setHorn(false);
     setIsHornActive(false);
     soundEngine.stopEngine();
@@ -194,41 +731,72 @@ export default function App() {
     });
   }, []);
 
-  // Keyboard Controls (using physical e.code so EN and RU layouts both work!)
+  // Keyboard Controls (dynamic custom keybindings using physical e.code)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const code = e.code;
 
-      if (code === 'ArrowLeft' || code === 'KeyA') {
+      // Key rebinding capture mode
+      const activeListen = listeningActionRef.current;
+      if (activeListen) {
+        e.preventDefault();
+        if (code === 'Escape') {
+          setListeningAction(null);
+          return;
+        }
+        setKeyBindings((prev) => {
+          const updated: KeyBindings = { ...prev };
+          for (const action of CONTROL_ACTIONS_ORDER) {
+            updated[action] = prev[action].filter((c) => c !== code);
+          }
+          updated[activeListen] = [code];
+          return updated;
+        });
+        setListeningAction(null);
+        return;
+      }
+
+      const kb = keyBindingsRef.current;
+      const matches = (action: ControlAction) => kb[action].includes(code);
+
+      if (matches('steerLeft')) {
         e.preventDefault();
         inputRef.current.steerLeft = true;
-      } else if (code === 'ArrowRight' || code === 'KeyD') {
+      }
+      if (matches('steerRight')) {
         e.preventDefault();
         inputRef.current.steerRight = true;
-      } else if (code === 'ArrowUp' || code === 'KeyW') {
+      }
+      if (matches('accelerate')) {
         e.preventDefault();
         inputRef.current.accelerate = true;
-      } else if (code === 'ArrowDown' || code === 'KeyS') {
+      }
+      if (matches('brake')) {
         e.preventDefault();
         inputRef.current.brake = true;
-      } else if (code === 'KeyH') {
+      }
+      if (matches('horn')) {
         e.preventDefault();
         if (!e.repeat) {
           setHornPressed(true);
         }
-      } else if (code === 'KeyC') {
+      }
+      if (matches('camera')) {
         e.preventDefault();
         if (!e.repeat) {
           toggleCameraMode();
         }
-      } else if (code === 'Space' || code === 'ShiftLeft' || code === 'ShiftRight') {
+      }
+      if (matches('nitro')) {
         e.preventDefault();
-        if (gameStateRef.current === 'TITLE_MENU' || gameStateRef.current === 'GAME_OVER') {
+        if (gameStateRef.current === 'GAME_OVER') {
           if (!e.repeat) startGame();
-        } else {
+        } else if (gameStateRef.current === 'PLAYING') {
           inputRef.current.nitro = true;
         }
-      } else if (code === 'Enter') {
+      }
+
+      if (code === 'Enter') {
         if (gameStateRef.current === 'TITLE_MENU' || gameStateRef.current === 'GAME_OVER') {
           startGame();
         } else if (gameStateRef.current === 'PAUSED') {
@@ -245,17 +813,23 @@ export default function App() {
 
     const handleKeyUp = (e: KeyboardEvent) => {
       const code = e.code;
-      if (code === 'ArrowLeft' || code === 'KeyA') {
+      const kb = keyBindingsRef.current;
+      if (kb.steerLeft.includes(code)) {
         inputRef.current.steerLeft = false;
-      } else if (code === 'ArrowRight' || code === 'KeyD') {
+      }
+      if (kb.steerRight.includes(code)) {
         inputRef.current.steerRight = false;
-      } else if (code === 'ArrowUp' || code === 'KeyW') {
+      }
+      if (kb.accelerate.includes(code)) {
         inputRef.current.accelerate = false;
-      } else if (code === 'ArrowDown' || code === 'KeyS') {
+      }
+      if (kb.brake.includes(code)) {
         inputRef.current.brake = false;
-      } else if (code === 'Space' || code === 'ShiftLeft' || code === 'ShiftRight') {
+      }
+      if (kb.nitro.includes(code)) {
         inputRef.current.nitro = false;
-      } else if (code === 'KeyH') {
+      }
+      if (kb.horn.includes(code)) {
         setHornPressed(false);
       }
     };
@@ -267,6 +841,7 @@ export default function App() {
       inputRef.current.steerLeft = false;
       inputRef.current.steerRight = false;
       setHornPressed(false);
+      setListeningAction(null);
       if (gameStateRef.current === 'PLAYING') {
         soundEngine.stopEngine();
         syncGameState('PAUSED');
@@ -295,6 +870,8 @@ export default function App() {
     try {
       scene3D = new Highway3DRenderer(container);
       renderer3DRef.current = scene3D;
+      scene3D.applyLanguage(language);
+      scene3D.applyGraphicsQuality(graphicsQualityRef.current);
       scene3D.applyCarStyle(selectedCarRef.current);
       scene3D.applyAtmosphere(timeOfDayRef.current);
     } catch {
@@ -361,6 +938,7 @@ export default function App() {
       scene3D.dispose();
       renderer3DRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncGameState]);
 
   // Continuous pointer hold steering on left/right side of 3D viewport
@@ -401,6 +979,8 @@ export default function App() {
   };
 
   const nitroPercent = Math.max(0, Math.min(100, hud.nitro));
+  const hornKeyBadge = formatKeyCode(keyBindings.horn[0] ?? 'KeyH', language);
+  const cameraKeyBadge = formatKeyCode(keyBindings.camera[0] ?? 'KeyC', language);
 
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-[#090D16] text-[#F1F5F9] select-none">
@@ -420,17 +1000,15 @@ export default function App() {
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#0D1017] p-6">
           <div className="max-w-md rounded-2xl border border-white/10 bg-[#151A24] p-6 text-center space-y-3">
             <h2 className="font-display text-2xl font-bold text-white">
-              3D-графика недоступна
+              {t.webglUnavailableTitle}
             </h2>
-            <p className="text-sm text-slate-300">
-              Браузер не смог инициализировать WebGL. Попробуйте обновить страницу или включить аппаратное ускорение.
-            </p>
+            <p className="text-sm text-slate-300">{t.webglUnavailableBody}</p>
             <button
               type="button"
               onClick={() => window.location.reload()}
               className="px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-semibold cursor-pointer"
             >
-              Перезагрузить
+              {t.reloadBtn}
             </button>
           </div>
         </div>
@@ -442,45 +1020,49 @@ export default function App() {
           {/* Brand + Active Camera */}
           <div className="flex items-center gap-3 shrink-0">
             <span className="font-display text-lg sm:text-xl font-extrabold text-white whitespace-nowrap">
-              Трасса 3
+              {t.appName}
             </span>
             <span className="hidden sm:inline text-slate-600">·</span>
             <button
               type="button"
               onClick={toggleCameraMode}
-              title="Переключить камеру (C)"
+              title={`${t.settingCamera} (${cameraKeyBadge})`}
               className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#1A202E] hover:bg-[#232B3D] border border-white/10 text-xs font-medium text-slate-200 transition-colors cursor-pointer whitespace-nowrap"
             >
               <Camera className="w-3.5 h-3.5 text-amber-400" />
-              <span>{cameraMode === 'first' ? '1-е лицо' : 'Сзади'}</span>
+              <span>{cameraMode === 'first' ? t.cameraFirst : t.cameraThird}</span>
             </button>
           </div>
 
           {/* Core Metrics */}
           <div className="flex items-center gap-3.5 sm:gap-6 min-w-0">
             <div>
-              <div className="text-[10px] sm:text-[11px] text-slate-400 leading-none">Очки</div>
+              <div className="text-[10px] sm:text-[11px] text-slate-400 leading-none">
+                {t.hudScore}
+              </div>
               <div className="font-mono-tabular text-sm sm:text-lg font-bold text-white leading-tight">
-                {hud.score.toLocaleString('ru-RU')}
+                {hud.score.toLocaleString(numberLocale)}
               </div>
             </div>
 
             <div className="hidden md:block">
-              <div className="text-[11px] text-slate-400 leading-none">Рекорд</div>
+              <div className="text-[11px] text-slate-400 leading-none">{t.hudBest}</div>
               <div className="font-mono-tabular text-lg font-bold text-amber-400 leading-tight">
-                {hud.bestScore.toLocaleString('ru-RU')}
+                {hud.bestScore.toLocaleString(numberLocale)}
               </div>
             </div>
 
             <div>
               <div className="flex items-center gap-1 text-[10px] sm:text-[11px] text-slate-400 leading-none">
                 <Gauge className="w-3 h-3 text-amber-400 hidden sm:inline" />
-                <span>Скорость</span>
+                <span>{t.hudSpeed}</span>
               </div>
               <div className="font-mono-tabular text-sm sm:text-lg font-bold text-amber-400 leading-tight flex items-baseline gap-1.5">
                 <span>
                   {hud.speedKmh}{' '}
-                  <span className="text-[10px] sm:text-xs font-normal text-slate-400">км/ч</span>
+                  <span className="text-[10px] sm:text-xs font-normal text-slate-400">
+                    {t.hudUnitKmh}
+                  </span>
                 </span>
                 <span className="text-[11px] font-semibold text-sky-300/90">
                   M{hud.gear}
@@ -489,9 +1071,10 @@ export default function App() {
             </div>
 
             <div className="hidden sm:block">
-              <div className="text-[11px] text-slate-400 leading-none">Дистанция</div>
+              <div className="text-[11px] text-slate-400 leading-none">{t.hudDistance}</div>
               <div className="font-mono-tabular text-base font-semibold text-slate-100 leading-tight">
-                {hud.distanceKm.toFixed(2)} <span className="text-xs font-normal text-slate-400">км</span>
+                {hud.distanceKm.toFixed(2)}{' '}
+                <span className="text-xs font-normal text-slate-400">{t.hudUnitKm}</span>
               </div>
             </div>
           </div>
@@ -500,7 +1083,7 @@ export default function App() {
           <div className="flex items-center gap-3 shrink-0">
             <div
               className="flex items-center gap-1"
-              aria-label={`Жизни: ${hud.lives} из ${hud.maxLives}`}
+              aria-label={t.hudLivesAria(hud.lives, hud.maxLives)}
             >
               {Array.from({ length: hud.maxLives }).map((_, i) => (
                 <Shield
@@ -550,179 +1133,225 @@ export default function App() {
                 key={c.id}
                 className={`px-3 py-1 rounded-lg bg-[#0E121B]/90 border text-xs sm:text-sm font-display font-bold shadow-lg ${colorClass}`}
               >
-                {c.text}
+                {getCalloutLabel(c.key, t)}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* TITLE MENU OVERLAY */}
+      {/* TITLE MENU OVERLAY WITH GARAGE & SETTINGS TABS */}
       {gameState === 'TITLE_MENU' && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-[#090D16]/65">
-          <div className="w-full max-w-md rounded-2xl bg-[#121620] border border-white/10 p-6 sm:p-7 shadow-2xl space-y-5">
-            <div>
-              <div className="text-xs font-medium text-amber-400">
-                3D-трасса · свободное руление
-              </div>
-              <h1 className="font-display text-4xl font-extrabold text-white mt-1 tracking-tight">
-                Трасса 3
-              </h1>
-              <p className="text-sm text-slate-300 mt-1.5 leading-relaxed">
-                Свободно маневрируйте по всей ширине дороги и между полосами, переключайте вид из салона и сзади, подавайте сигнал.
-              </p>
-            </div>
-
-            {/* Car Selection */}
-            <div>
-              <div className="text-xs font-medium text-slate-400 mb-2">Выбор автомобиля</div>
-              <div className="grid grid-cols-2 gap-2">
-                {PLAYER_CARS.map((car) => {
-                  const active = car.id === selectedCar;
-                  return (
-                    <button
-                      key={car.id}
-                      type="button"
-                      onClick={() => setSelectedCar(car.id)}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
-                        active
-                          ? 'bg-[#202636] border-amber-400/75 text-white'
-                          : 'bg-[#171C28] border-white/10 text-slate-300 hover:bg-[#1E2434]'
-                      }`}
-                    >
-                      <span
-                        className="w-4 h-6 rounded-sm shrink-0 border border-white/20"
-                        style={{ backgroundColor: car.bodyColor }}
-                      />
-                      <span className="text-sm font-semibold truncate">{car.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Camera & Time of Day */}
-            <div className="grid grid-cols-2 gap-3">
+          <div className="w-full max-w-lg max-h-[86vh] flex flex-col rounded-2xl bg-[#121620] border border-white/10 p-5 sm:p-6 shadow-2xl">
+            {/* Header + Tabs */}
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-white/10 shrink-0">
               <div>
-                <div className="text-xs font-medium text-slate-400 mb-1.5">Камера (C)</div>
-                <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cameraModeRef.current = 'third';
-                      setCameraMode('third');
-                    }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                      cameraMode === 'third' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Сзади
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cameraModeRef.current = 'first';
-                      setCameraMode('first');
-                    }}
-                    className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                      cameraMode === 'first' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    1-е лицо
-                  </button>
-                </div>
+                <div className="text-xs font-medium text-amber-400">{t.subtitle}</div>
+                <h1 className="font-display text-3xl sm:text-4xl font-extrabold text-white mt-0.5 tracking-tight">
+                  {t.appName}
+                </h1>
               </div>
 
-              <div>
-                <div className="text-xs font-medium text-slate-400 mb-1.5">Освещение</div>
-                <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setTimeOfDay('night')}
-                    className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                      timeOfDay === 'night' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Moon className="w-3.5 h-3.5" />
-                    <span>Ночь</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTimeOfDay('day')}
-                    className={`flex items-center justify-center gap-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                      timeOfDay === 'day' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Sun className="w-3.5 h-3.5" />
-                    <span>День</span>
-                  </button>
-                </div>
+              <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListeningAction(null);
+                    setMenuTab('garage');
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    menuTab === 'garage' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Car className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{t.tabGarage}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMenuTab('settings')}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    menuTab === 'settings' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Settings className="w-3.5 h-3.5 text-sky-400" />
+                  <span>{t.tabSettings}</span>
+                </button>
               </div>
             </div>
 
-            {hud.bestScore > 0 && (
-              <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[#171C28] border border-white/10 text-sm">
-                <span className="text-slate-400">Лучший результат</span>
-                <span className="font-mono-tabular font-bold text-amber-400">
-                  {hud.bestScore.toLocaleString('ru-RU')}
-                </span>
-              </div>
-            )}
+            {/* Tab Body */}
+            <div className="flex-1 overflow-y-auto py-4 pr-0.5 space-y-4">
+              {menuTab === 'garage' ? (
+                <>
+                  <div>
+                    <div className="text-xs font-medium text-slate-400 mb-2">{t.garageTitle}</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {PLAYER_CARS.map((car) => {
+                        const active = car.id === selectedCar;
+                        const loc = t.vehicles[car.id];
+                        return (
+                          <button
+                            key={car.id}
+                            type="button"
+                            onClick={() => setSelectedCar(car.id)}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl border text-left transition-colors cursor-pointer ${
+                              active
+                                ? 'bg-[#202636] border-amber-400/75 text-white'
+                                : 'bg-[#171C28] border-white/10 text-slate-300 hover:bg-[#1E2434]'
+                            } ${car.id === 'tank' ? 'col-span-2' : ''}`}
+                          >
+                            <span
+                              className="w-4 h-6 rounded-sm shrink-0 border border-white/20"
+                              style={{ backgroundColor: car.bodyColor }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-semibold truncate">{loc.name}</div>
+                              <div className="text-[11px] text-slate-400 truncate">{loc.tag}</div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-            <div className="space-y-3 pt-1">
+                  {hud.bestScore > 0 && (
+                    <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[#171C28] border border-white/10 text-sm">
+                      <span className="text-slate-400">{t.bestScoreLabel}</span>
+                      <span className="font-mono-tabular font-bold text-amber-400">
+                        {hud.bestScore.toLocaleString(numberLocale)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <SettingsPanel
+                  t={t}
+                  language={language}
+                  setLanguage={setLanguage}
+                  graphicsQuality={graphicsQuality}
+                  setGraphicsQuality={setGraphicsQuality}
+                  cameraMode={cameraMode}
+                  setCameraModeDirect={setCameraModeDirect}
+                  timeOfDay={timeOfDay}
+                  setTimeOfDay={setTimeOfDay}
+                  isMuted={isMuted}
+                  toggleMute={toggleMute}
+                  steeringSensitivity={steeringSensitivity}
+                  setSteeringSensitivity={setSteeringSensitivity}
+                  keyBindings={keyBindings}
+                  setKeyBindings={setKeyBindings}
+                  listeningAction={listeningAction}
+                  setListeningAction={setListeningAction}
+                />
+              )}
+            </div>
+
+            {/* Footer CTA */}
+            <div className="pt-3 border-t border-white/10 space-y-2.5 shrink-0">
               <button
                 type="button"
                 onClick={startGame}
                 className="w-full py-3.5 px-6 rounded-xl bg-red-600 hover:bg-red-500 active:scale-[0.99] text-white font-display font-bold text-base tracking-wide transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-950/50 cursor-pointer"
               >
                 <Play className="w-5 h-5 fill-current" />
-                <span>Начать поездку</span>
+                <span>{t.startDrive}</span>
               </button>
-              <div className="text-center text-xs text-slate-400 leading-relaxed">
-                A / D или ← / → плавное руление · W / S газ и тормоз · Пробел нитро · H гудок · C камера
+              <div className="text-center text-[11px] text-slate-400 leading-relaxed">
+                {formatControlsHint(keyBindings, language)}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* PAUSE OVERLAY */}
+      {/* PAUSE OVERLAY WITH INLINE SETTINGS */}
       {gameState === 'PAUSED' && (
         <div className="absolute inset-0 z-30 flex items-center justify-center p-4 bg-[#090D16]/65">
-          <div className="w-full max-w-xs rounded-2xl bg-[#121620] border border-white/10 p-6 text-center space-y-5 shadow-2xl">
-            <div>
-              <h2 className="font-display text-2xl font-bold text-white">Пауза</h2>
-              <p className="text-sm text-slate-400 mt-1">
-                Очки: <span className="font-mono-tabular text-white font-semibold">{hud.score.toLocaleString('ru-RU')}</span>
-              </p>
-            </div>
+          {pauseSubView === 'menu' ? (
+            <div className="w-full max-w-xs rounded-2xl bg-[#121620] border border-white/10 p-6 text-center space-y-5 shadow-2xl">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-white">{t.pauseTitle}</h2>
+                <p className="text-sm text-slate-400 mt-1">
+                  {t.hudScore}:{' '}
+                  <span className="font-mono-tabular text-white font-semibold">
+                    {hud.score.toLocaleString(numberLocale)}
+                  </span>
+                </p>
+              </div>
 
-            <div className="space-y-2.5">
-              <button
-                type="button"
-                onClick={togglePause}
-                className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Продолжить</span>
-              </button>
-              <button
-                type="button"
-                onClick={startGame}
-                className="w-full py-2.5 px-4 rounded-xl bg-[#1E2432] hover:bg-[#283044] text-slate-200 font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>Начать заново</span>
-              </button>
-              <button
-                type="button"
-                onClick={returnToMenu}
-                className="w-full py-2 px-4 rounded-xl text-slate-400 hover:text-white font-medium text-sm transition-colors cursor-pointer"
-              >
-                Выйти в меню
-              </button>
+              <div className="space-y-2.5">
+                <button
+                  type="button"
+                  onClick={togglePause}
+                  className="w-full py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>{t.resumeDrive}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPauseSubView('settings')}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#1E2432] hover:bg-[#283044] text-slate-200 font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Settings className="w-4 h-4 text-sky-400" />
+                  <span>{t.tabSettings}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={startGame}
+                  className="w-full py-2.5 px-4 rounded-xl bg-[#1E2432] hover:bg-[#283044] text-slate-200 font-medium text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>{t.restartDrive}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={returnToMenu}
+                  className="w-full py-2 px-4 rounded-xl text-slate-400 hover:text-white font-medium text-sm transition-colors cursor-pointer"
+                >
+                  {t.backToMenu}
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="w-full max-w-lg max-h-[86vh] flex flex-col rounded-2xl bg-[#121620] border border-white/10 p-5 sm:p-6 shadow-2xl">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10 shrink-0">
+                <h2 className="font-display text-xl font-bold text-white">{t.settingsTitle}</h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setListeningAction(null);
+                    setPauseSubView('menu');
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-[#1E2432] hover:bg-[#283044] text-xs font-semibold text-slate-200 cursor-pointer"
+                >
+                  {t.backToPause}
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto py-4 pr-0.5">
+                <SettingsPanel
+                  t={t}
+                  language={language}
+                  setLanguage={setLanguage}
+                  graphicsQuality={graphicsQuality}
+                  setGraphicsQuality={setGraphicsQuality}
+                  cameraMode={cameraMode}
+                  setCameraModeDirect={setCameraModeDirect}
+                  timeOfDay={timeOfDay}
+                  setTimeOfDay={setTimeOfDay}
+                  isMuted={isMuted}
+                  toggleMute={toggleMute}
+                  steeringSensitivity={steeringSensitivity}
+                  setSteeringSensitivity={setSteeringSensitivity}
+                  keyBindings={keyBindings}
+                  setKeyBindings={setKeyBindings}
+                  listeningAction={listeningAction}
+                  setListeningAction={setListeningAction}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -733,35 +1362,35 @@ export default function App() {
             <div className="text-center">
               {isNewRecord && (
                 <div className="text-xs font-semibold text-amber-400 mb-1">
-                  Новый рекорд трассы
+                  {t.newRecordBadge}
                 </div>
               )}
               <h2 className="font-display text-3xl font-extrabold text-white">
-                Заезд завершён
+                {t.gameOverTitle}
               </h2>
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
               <div className="p-3 rounded-xl bg-[#1A1F2C] border border-white/5">
-                <div className="text-xs text-slate-400">Очки</div>
+                <div className="text-xs text-slate-400">{t.hudScore}</div>
                 <div className="font-mono-tabular text-xl font-bold text-white mt-0.5">
-                  {hud.score.toLocaleString('ru-RU')}
+                  {hud.score.toLocaleString(numberLocale)}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-[#1A1F2C] border border-white/5">
-                <div className="text-xs text-slate-400">Рекорд</div>
+                <div className="text-xs text-slate-400">{t.hudBest}</div>
                 <div className="font-mono-tabular text-xl font-bold text-amber-400 mt-0.5">
-                  {hud.bestScore.toLocaleString('ru-RU')}
+                  {hud.bestScore.toLocaleString(numberLocale)}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-[#1A1F2C] border border-white/5">
-                <div className="text-xs text-slate-400">Дистанция</div>
+                <div className="text-xs text-slate-400">{t.hudDistance}</div>
                 <div className="font-mono-tabular text-base font-semibold text-slate-100 mt-0.5">
-                  {hud.distanceKm.toFixed(2)} км
+                  {hud.distanceKm.toFixed(2)} {t.hudUnitKm}
                 </div>
               </div>
               <div className="p-3 rounded-xl bg-[#1A1F2C] border border-white/5">
-                <div className="text-xs text-slate-400">Обгоны / Риск</div>
+                <div className="text-xs text-slate-400">{t.overtakenRisk}</div>
                 <div className="font-mono-tabular text-base font-semibold text-slate-100 mt-0.5">
                   {hud.overtakenCount} / {hud.nearMissCount}
                 </div>
@@ -775,14 +1404,14 @@ export default function App() {
                 className="w-full py-3.5 px-5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-display font-bold text-base flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
-                <span>Сыграть снова</span>
+                <span>{t.playAgain}</span>
               </button>
               <button
                 type="button"
                 onClick={returnToMenu}
                 className="w-full py-2.5 px-4 rounded-xl bg-[#1E2432] hover:bg-[#283044] text-slate-200 font-medium text-sm transition-colors cursor-pointer"
               >
-                Выбор автомобиля
+                {t.chooseVehicle}
               </button>
             </div>
           </div>
@@ -797,7 +1426,7 @@ export default function App() {
           className="pointer-events-auto mb-1.5 px-3 py-1 rounded-lg bg-[#0E121B]/90 border border-white/10 text-[11px] font-medium text-slate-300 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
         >
           {dockCollapsed ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          <span>{dockCollapsed ? 'Показать управление' : 'Скрыть панель'}</span>
+          <span>{dockCollapsed ? t.dockShow : t.dockHide}</span>
         </button>
 
         {!dockCollapsed && (
@@ -818,7 +1447,7 @@ export default function App() {
                 onPointerCancel={() => {
                   inputRef.current.steerLeft = false;
                 }}
-                aria-label="Влево"
+                aria-label={t.dockLeft}
                 className="h-11 w-11 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] active:bg-[#2D374E] border border-white/10 flex items-center justify-center text-white cursor-pointer"
               >
                 <ChevronLeft className="w-5 h-5" />
@@ -837,7 +1466,7 @@ export default function App() {
                 }}
                 className="h-11 px-3 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] active:bg-red-900/60 border border-white/10 text-xs font-semibold text-slate-200 cursor-pointer whitespace-nowrap"
               >
-                Тормоз
+                {t.dockBrake}
               </button>
 
               <button
@@ -854,7 +1483,7 @@ export default function App() {
                 className="h-11 px-3 rounded-xl bg-sky-600/90 hover:bg-sky-500 active:bg-sky-400 border border-sky-400/30 flex items-center gap-1.5 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
               >
                 <Flame className="w-4 h-4" />
-                <span>Нитро</span>
+                <span>{t.dockNitro}</span>
               </button>
 
               <button
@@ -870,7 +1499,7 @@ export default function App() {
                 }}
                 className="h-11 px-3 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] active:bg-emerald-900/60 border border-white/10 text-xs font-semibold text-slate-200 cursor-pointer whitespace-nowrap"
               >
-                Газ
+                {t.dockGas}
               </button>
 
               <button
@@ -887,7 +1516,7 @@ export default function App() {
                 onPointerCancel={() => {
                   inputRef.current.steerRight = false;
                 }}
-                aria-label="Вправо"
+                aria-label={t.dockRight}
                 className="h-11 w-11 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] active:bg-[#2D374E] border border-white/10 flex items-center justify-center text-white cursor-pointer"
               >
                 <ChevronRight className="w-5 h-5" />
@@ -896,7 +1525,7 @@ export default function App() {
 
             <div className="hidden sm:block h-7 w-px bg-white/10" />
 
-            {/* Horn (H), Camera Switch (C), Lighting, Audio, Pause */}
+            {/* Horn, Camera Switch, Lighting, Audio, Pause/Settings */}
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
@@ -910,7 +1539,9 @@ export default function App() {
                 }`}
               >
                 <Megaphone className="w-4 h-4" />
-                <span>Гудок (H)</span>
+                <span>
+                  {t.controlActions.horn} ({hornKeyBadge})
+                </span>
               </button>
 
               <button
@@ -919,14 +1550,16 @@ export default function App() {
                 className="h-11 px-3.5 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] border border-white/10 flex items-center gap-1.5 text-xs font-semibold text-slate-100 transition-colors cursor-pointer whitespace-nowrap"
               >
                 <Camera className="w-4 h-4 text-sky-400" />
-                <span>{cameraMode === 'first' ? '1-е лицо (C)' : 'Сзади (C)'}</span>
+                <span>
+                  {cameraMode === 'first' ? t.cameraFirst : t.cameraThird} ({cameraKeyBadge})
+                </span>
               </button>
 
               <button
                 type="button"
-                onClick={() => setTimeOfDay((t) => (t === 'night' ? 'day' : 'night'))}
-                aria-label="Сменить освещение"
-                title={timeOfDay === 'night' ? 'Дневной режим' : 'Ночной режим'}
+                onClick={() => setTimeOfDay((tod) => (tod === 'night' ? 'day' : 'night'))}
+                aria-label={timeOfDay === 'night' ? t.dockLightTooltipDay : t.dockLightTooltipNight}
+                title={timeOfDay === 'night' ? t.dockLightTooltipDay : t.dockLightTooltipNight}
                 className="h-11 w-11 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] border border-white/10 flex items-center justify-center text-slate-200 cursor-pointer"
               >
                 {timeOfDay === 'night' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -935,8 +1568,8 @@ export default function App() {
               <button
                 type="button"
                 onClick={toggleMute}
-                aria-label={isMuted ? 'Включить звук' : 'Выключить звук'}
-                title="Звук (M)"
+                aria-label={isMuted ? t.dockSoundOn : t.dockSoundOff}
+                title={t.settingSound}
                 className="h-11 w-11 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] border border-white/10 flex items-center justify-center text-slate-200 cursor-pointer"
               >
                 {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -946,8 +1579,8 @@ export default function App() {
                 <button
                   type="button"
                   onClick={togglePause}
-                  aria-label={gameState === 'PAUSED' ? 'Продолжить' : 'Пауза'}
-                  title="Пауза (P)"
+                  aria-label={gameState === 'PAUSED' ? t.dockResume : t.dockPause}
+                  title={`${t.dockPause} (P)`}
                   className="h-11 w-11 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] border border-white/10 flex items-center justify-center text-slate-200 cursor-pointer"
                 >
                   {gameState === 'PAUSED' ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
