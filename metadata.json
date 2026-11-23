@@ -1,0 +1,6 @@
+{
+  "name": "Трасса 3 — 2D Гонка по трём полосам",
+  "description": "Динамичная 2D-игра с видом сверху: управляйте автомобилем на трёхполосной трассе, обгоняйте поток машин и устанавливайте рекорды.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
