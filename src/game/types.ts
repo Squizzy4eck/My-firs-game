@@ -9,22 +9,46 @@ export type TimeOfDay = 'night' | 'day';
 export type PlayerCarId =
   | 'starter'
   | 'crimson'
+  | 'audi'
   | 'pickup'
+  | 'bmw'
   | 'amber'
+  | 'hayabusa'
+  | 'mercedes'
   | 'emerald'
+  | 'yamaha'
+  | 'gwagon'
   | 'police'
+  | 'ducati'
+  | 'porsche'
   | 'cobalt'
-  | 'tank';
+  | 'h2r'
+  | 'tank'
+  | 'f1';
 
 export type PlayerArchetype =
   | 'sedan'
   | 'sport'
+  | 'audi'
   | 'pickup'
+  | 'bmw'
   | 'muscle'
+  | 'hayabusa'
+  | 'mercedes'
   | 'suv'
+  | 'yamaha'
+  | 'gwagon'
   | 'police'
+  | 'ducati'
+  | 'porsche'
   | 'hyper'
-  | 'tank';
+  | 'h2r'
+  | 'tank'
+  | 'f1';
+
+export function isMotorcycleArchetype(arch: PlayerArchetype | TrafficKind): boolean {
+  return arch === 'hayabusa' || arch === 'yamaha' || arch === 'ducati' || arch === 'h2r';
+}
 
 export interface PlayerCarOption {
   id: PlayerCarId;
@@ -39,6 +63,9 @@ export interface PlayerCarOption {
   stripeColor: string;
   cockpitOffsetY: number;
   cockpitOffsetZ: number;
+  isMotorcycle?: boolean;
+  hitboxWidth?: number;
+  hitboxLength?: number;
 }
 
 export const PLAYER_CARS: PlayerCarOption[] = [
@@ -71,13 +98,27 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: 0,
   },
   {
+    id: 'audi',
+    archetype: 'audi',
+    name: 'Audi R8',
+    price: 750,
+    cruiseSpeedKmh: 116,
+    maxSpeedKmh: 175,
+    nitroSpeedKmh: 205,
+    bodyColor: '#6B7280',
+    accentColor: '#1F2937',
+    stripeColor: '#E5E7EB',
+    cockpitOffsetY: 0.01,
+    cockpitOffsetZ: 0,
+  },
+  {
     id: 'pickup',
     archetype: 'pickup',
     name: 'Пикап Трак',
-    price: 900,
-    cruiseSpeedKmh: 118,
-    maxSpeedKmh: 180,
-    nitroSpeedKmh: 212,
+    price: 1050,
+    cruiseSpeedKmh: 120,
+    maxSpeedKmh: 184,
+    nitroSpeedKmh: 216,
     bodyColor: '#7C3AED',
     accentColor: '#4C1D95',
     stripeColor: '#E2E8F0',
@@ -85,13 +126,27 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: -0.08,
   },
   {
+    id: 'bmw',
+    archetype: 'bmw',
+    name: 'BMW M5',
+    price: 1350,
+    cruiseSpeedKmh: 124,
+    maxSpeedKmh: 194,
+    nitroSpeedKmh: 228,
+    bodyColor: '#1D4ED8',
+    accentColor: '#1E3A8A',
+    stripeColor: '#F8FAFC',
+    cockpitOffsetY: 0.01,
+    cockpitOffsetZ: 0,
+  },
+  {
     id: 'amber',
     archetype: 'muscle',
     name: 'Маслкар V8',
-    price: 1400,
-    cruiseSpeedKmh: 124,
-    maxSpeedKmh: 195,
-    nitroSpeedKmh: 230,
+    price: 1700,
+    cruiseSpeedKmh: 128,
+    maxSpeedKmh: 203,
+    nitroSpeedKmh: 239,
     bodyColor: '#D97706',
     accentColor: '#78350F',
     stripeColor: '#111827',
@@ -99,13 +154,44 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: 0.02,
   },
   {
+    id: 'hayabusa',
+    archetype: 'hayabusa',
+    name: 'Suzuki Hayabusa',
+    price: 1900,
+    cruiseSpeedKmh: 145,
+    maxSpeedKmh: 265,
+    nitroSpeedKmh: 310,
+    bodyColor: '#1E3A8A',
+    accentColor: '#CBD5E1',
+    stripeColor: '#38BDF8',
+    cockpitOffsetY: 0,
+    cockpitOffsetZ: 0,
+    isMotorcycle: true,
+    hitboxWidth: 0.92,
+    hitboxLength: 2.3,
+  },
+  {
+    id: 'mercedes',
+    archetype: 'mercedes',
+    name: 'Mercedes AMG',
+    price: 2100,
+    cruiseSpeedKmh: 132,
+    maxSpeedKmh: 212,
+    nitroSpeedKmh: 250,
+    bodyColor: '#94A3B8',
+    accentColor: '#0F172A',
+    stripeColor: '#E2E8F0',
+    cockpitOffsetY: 0,
+    cockpitOffsetZ: 0,
+  },
+  {
     id: 'emerald',
     archetype: 'suv',
     name: 'Внедорожник',
-    price: 2000,
-    cruiseSpeedKmh: 130,
-    maxSpeedKmh: 210,
-    nitroSpeedKmh: 248,
+    price: 2500,
+    cruiseSpeedKmh: 135,
+    maxSpeedKmh: 220,
+    nitroSpeedKmh: 260,
     bodyColor: '#059669',
     accentColor: '#064E3B',
     stripeColor: '#E2E8F0',
@@ -113,13 +199,44 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: -0.02,
   },
   {
+    id: 'yamaha',
+    archetype: 'yamaha',
+    name: 'Yamaha YZF-R1',
+    price: 2700,
+    cruiseSpeedKmh: 152,
+    maxSpeedKmh: 282,
+    nitroSpeedKmh: 328,
+    bodyColor: '#1D4ED8',
+    accentColor: '#0F172A',
+    stripeColor: '#F8FAFC',
+    cockpitOffsetY: 0,
+    cockpitOffsetZ: 0,
+    isMotorcycle: true,
+    hitboxWidth: 0.88,
+    hitboxLength: 2.25,
+  },
+  {
+    id: 'gwagon',
+    archetype: 'gwagon',
+    name: 'Mercedes G63',
+    price: 2950,
+    cruiseSpeedKmh: 138,
+    maxSpeedKmh: 228,
+    nitroSpeedKmh: 270,
+    bodyColor: '#18181B',
+    accentColor: '#09090B',
+    stripeColor: '#D4D4D8',
+    cockpitOffsetY: 0.22,
+    cockpitOffsetZ: -0.02,
+  },
+  {
     id: 'police',
     archetype: 'police',
     name: 'Полиция',
-    price: 2800,
-    cruiseSpeedKmh: 136,
-    maxSpeedKmh: 225,
-    nitroSpeedKmh: 266,
+    price: 3450,
+    cruiseSpeedKmh: 141,
+    maxSpeedKmh: 236,
+    nitroSpeedKmh: 279,
     bodyColor: '#111827',
     accentColor: '#1E293B',
     stripeColor: '#F8FAFC',
@@ -127,13 +244,44 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: 0,
   },
   {
+    id: 'ducati',
+    archetype: 'ducati',
+    name: 'Ducati Panigale V4 R',
+    price: 3800,
+    cruiseSpeedKmh: 162,
+    maxSpeedKmh: 300,
+    nitroSpeedKmh: 348,
+    bodyColor: '#DC2626',
+    accentColor: '#18181B',
+    stripeColor: '#F8FAFC',
+    cockpitOffsetY: 0,
+    cockpitOffsetZ: 0,
+    isMotorcycle: true,
+    hitboxWidth: 0.88,
+    hitboxLength: 2.25,
+  },
+  {
+    id: 'porsche',
+    archetype: 'porsche',
+    name: 'Porsche 911',
+    price: 4100,
+    cruiseSpeedKmh: 144,
+    maxSpeedKmh: 244,
+    nitroSpeedKmh: 288,
+    bodyColor: '#EAB308',
+    accentColor: '#111827',
+    stripeColor: '#111827',
+    cockpitOffsetY: -0.04,
+    cockpitOffsetZ: -0.02,
+  },
+  {
     id: 'cobalt',
     archetype: 'hyper',
     name: 'Гиперкар GT',
-    price: 4000,
-    cruiseSpeedKmh: 142,
-    maxSpeedKmh: 242,
-    nitroSpeedKmh: 286,
+    price: 5000,
+    cruiseSpeedKmh: 147,
+    maxSpeedKmh: 252,
+    nitroSpeedKmh: 298,
     bodyColor: '#2563EB',
     accentColor: '#1E3A8A',
     stripeColor: '#FACC15',
@@ -141,18 +289,49 @@ export const PLAYER_CARS: PlayerCarOption[] = [
     cockpitOffsetZ: -0.04,
   },
   {
+    id: 'h2r',
+    archetype: 'h2r',
+    name: 'Kawasaki Ninja H2R',
+    price: 5800,
+    cruiseSpeedKmh: 174,
+    maxSpeedKmh: 312,
+    nitroSpeedKmh: 360,
+    bodyColor: '#16A34A',
+    accentColor: '#111827',
+    stripeColor: '#22C55E',
+    cockpitOffsetY: 0,
+    cockpitOffsetZ: 0,
+    isMotorcycle: true,
+    hitboxWidth: 0.9,
+    hitboxLength: 2.3,
+  },
+  {
     id: 'tank',
     archetype: 'tank',
     name: 'Боевой танк',
     price: 6500,
-    cruiseSpeedKmh: 150,
-    maxSpeedKmh: 260,
-    nitroSpeedKmh: 306,
+    cruiseSpeedKmh: 56,
+    maxSpeedKmh: 75,
+    nitroSpeedKmh: 75,
     bodyColor: '#4B5842',
     accentColor: '#2F3829',
     stripeColor: '#D97706',
     cockpitOffsetY: 0.26,
     cockpitOffsetZ: -0.14,
+  },
+  {
+    id: 'f1',
+    archetype: 'f1',
+    name: 'Болид F1',
+    price: 8500,
+    cruiseSpeedKmh: 188,
+    maxSpeedKmh: 315,
+    nitroSpeedKmh: 370,
+    bodyColor: '#DC2626',
+    accentColor: '#111827',
+    stripeColor: '#F8FAFC',
+    cockpitOffsetY: -0.22,
+    cockpitOffsetZ: 0.1,
   },
 ];
 
@@ -165,14 +344,26 @@ export type TrafficKind =
   | 'van'
   | 'sport'
   | 'police'
-  | 'bus';
+  | 'bus'
+  | 'audi'
+  | 'bmw'
+  | 'mercedes'
+  | 'gwagon'
+  | 'porsche'
+  | 'lambo'
+  | 'hayabusa'
+  | 'yamaha'
+  | 'ducati'
+  | 'h2r';
 
 export interface TrafficVehicle {
   id: number;
   kind: TrafficKind;
   lane: LaneIndex;
+  targetLane: LaneIndex;
   x: number;
   z: number; // negative = ahead of player, positive = behind
+  yaw: number;
   width: number;
   length: number;
   speed: number; // km/h
@@ -182,6 +373,9 @@ export interface TrafficVehicle {
   braking: boolean;
   nearMissed: boolean;
   hornReactionTimer: number;
+  laneChangePrepTimer: number;
+  laneChangeCooldown: number;
+  turnSignal: -1 | 0 | 1;
 }
 
 export type PickupKind = 'nitro' | 'repair';
@@ -216,6 +410,7 @@ export type CalloutKey =
   | 'repair'
   | 'bonus'
   | 'hit'
+  | 'curb'
   | 'crash';
 
 export interface CalloutNotice {
@@ -256,7 +451,7 @@ export function getLaneX3D(lane: LaneIndex): number {
   return (lane - 1) * LANE_WIDTH_3D; // -3.8, 0, +3.8
 }
 
-export type GraphicsQuality = 'high' | 'low';
+export type GraphicsQuality = 'high' | 'medium' | 'low';
 
 export type ControlAction =
   | 'steerLeft'

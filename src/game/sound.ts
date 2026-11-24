@@ -11,6 +11,11 @@ class SoundEngine {
   private hornGain: GainNode | null = null;
   private isHornPlaying: boolean = false;
 
+  private lastEngineUpdateCtxTime: number = -1;
+  private lastEngineFreq: number = -1;
+  private lastEngineGain: number = -1;
+  private crashNoiseBuffer: AudioBuffer | null = null;
+
   public setMuted(muted: boolean) {
     this.muted = muted;
     if (muted) {
@@ -74,17 +79,58 @@ class SoundEngine {
   }
 
   public updateEngine(speedKmh: number, isNitroActive: boolean, gear: number = 3) {
-    if (this.muted || !this.isEngineRunning || !this.ctx || !this.engineOsc || !this.engineGain) {
+    if (
+      this.muted ||
+      !this.isEngineRunning ||
+      !this.ctx ||
+      this.ctx.state !== 'running' ||
+      !this.engineOsc ||
+      !this.engineGain
+    ) {
       return;
     }
     const now = this.ctx.currentTime;
-    const normalized = Math.max(0, Math.min(1, (speedKmh - 60) / 210));
+    if (this.lastEngineUpdateCtxTime >= 0 && now - this.lastEngineUpdateCtxTime < 0.045) {
+      return;
+    }
+    const normalized = Math.max(0, Math.min(1, (speedKmh - 60) / 260));
     const gearOffset = (6 - Math.max(1, Math.min(6, gear))) * 4.5;
-    const targetFreq = 46 + normalized * 68 + gearOffset + (isNitroActive ? 26 : 0);
+    const targetFreq = 46 + normalized * 78 + gearOffset + (isNitroActive ? 26 : 0);
     const targetGain = 0.018 + normalized * 0.022 + (isNitroActive ? 0.016 : 0);
 
-    this.engineOsc.frequency.setTargetAtTime(targetFreq, now, 0.08);
-    this.engineGain.gain.setTargetAtTime(targetGain, now, 0.08);
+    if (
+      Math.abs(targetFreq - this.lastEngineFreq) < 0.4 &&
+      Math.abs(targetGain - this.lastEngineGain) < 0.0008
+    ) {
+      return;
+    }
+
+    this.lastEngineUpdateCtxTime = now;
+    this.lastEngineFreq = targetFreq;
+    this.lastEngineGain = targetGain;
+
+    try {
+      const freqParam = this.engineOsc.frequency as AudioParam & {
+        cancelAndHoldAtTime?: (t: number) => void;
+      };
+      const gainParam = this.engineGain.gain as AudioParam & {
+        cancelAndHoldAtTime?: (t: number) => void;
+      };
+      if (typeof freqParam.cancelAndHoldAtTime === 'function') {
+        freqParam.cancelAndHoldAtTime(now);
+      } else {
+        freqParam.cancelScheduledValues(now);
+      }
+      if (typeof gainParam.cancelAndHoldAtTime === 'function') {
+        gainParam.cancelAndHoldAtTime(now);
+      } else {
+        gainParam.cancelScheduledValues(now);
+      }
+      freqParam.setTargetAtTime(targetFreq, now, 0.08);
+      gainParam.setTargetAtTime(targetGain, now, 0.08);
+    } catch {
+      // Ignore AudioParam scheduling errors
+    }
   }
 
   public stopEngine() {
@@ -103,6 +149,9 @@ class SoundEngine {
     this.engineOsc = null;
     this.engineGain = null;
     this.isEngineRunning = false;
+    this.lastEngineUpdateCtxTime = -1;
+    this.lastEngineFreq = -1;
+    this.lastEngineGain = -1;
   }
 
   // Dual-tone realistic car horn (H key)
@@ -183,155 +232,182 @@ class SoundEngine {
 
   public playCameraSwitch() {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(480, now);
-    osc.frequency.exponentialRampToValueAtTime(640, now + 0.05);
-    gain.gain.setValueAtTime(0.035, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.065);
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(480, now);
+      osc.frequency.exponentialRampToValueAtTime(640, now + 0.05);
+      gain.gain.setValueAtTime(0.035, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.065);
+    } catch {
+      // Ignore audio errors
+    }
   }
 
   public playLaneShift() {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(220, now);
-    osc.frequency.exponentialRampToValueAtTime(340, now + 0.07);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(340, now + 0.07);
 
-    gain.gain.setValueAtTime(0.04, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.085);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.085);
+    } catch {
+      // Ignore audio errors
+    }
   }
 
   public playGearShift(isUpshift: boolean) {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
-    const now = ctx.currentTime;
-    // Two crisp mechanical gate notches (~160ms apart during hand shift)
-    const times = [now + 0.14, now + 0.27];
-    times.forEach((t, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      const baseFreq = idx === 0 ? 155 : isUpshift ? 235 : 185;
-      osc.frequency.setValueAtTime(baseFreq, t);
-      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.55, t + 0.045);
+    try {
+      const now = ctx.currentTime;
+      // Two crisp mechanical gate notches (~160ms apart during hand shift)
+      const times = [now + 0.14, now + 0.27];
+      times.forEach((t, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        const baseFreq = idx === 0 ? 155 : isUpshift ? 235 : 185;
+        osc.frequency.setValueAtTime(baseFreq, t);
+        osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.55, t + 0.045);
 
-      gain.gain.setValueAtTime(idx === 0 ? 0.032 : 0.048, t);
-      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+        gain.gain.setValueAtTime(idx === 0 ? 0.032 : 0.048, t);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(t);
-      osc.stop(t + 0.055);
-    });
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.055);
+      });
+    } catch {
+      // Ignore audio errors
+    }
   }
 
   public playNearMiss() {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(520, now);
-    osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(880, now + 0.12);
 
-    gain.gain.setValueAtTime(0.06, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      gain.gain.setValueAtTime(0.06, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } catch {
+      // Ignore audio errors
+    }
   }
 
   public playPickup() {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
-    const now = ctx.currentTime;
-    const notes = [587.33, 783.99];
-    notes.forEach((freq, idx) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      const start = now + idx * 0.065;
+    try {
+      const now = ctx.currentTime;
+      const notes = [587.33, 783.99];
+      notes.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        const start = now + idx * 0.065;
 
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, start);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, start);
 
-      gain.gain.setValueAtTime(0.07, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.13);
+        gain.gain.setValueAtTime(0.07, start);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.13);
 
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(start);
-      osc.stop(start + 0.14);
-    });
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.14);
+      });
+    } catch {
+      // Ignore audio errors
+    }
   }
 
   public playCrash() {
     const ctx = this.ensureContext();
-    if (!ctx) return;
+    if (!ctx || ctx.state !== 'running') return;
 
-    const now = ctx.currentTime;
+    try {
+      const now = ctx.currentTime;
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(140, now);
-    osc.frequency.exponentialRampToValueAtTime(34, now + 0.25);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, now);
+      osc.frequency.exponentialRampToValueAtTime(34, now + 0.25);
 
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.27);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.27);
 
-    const bufferSize = Math.floor(ctx.sampleRate * 0.18);
-    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+      if (!this.crashNoiseBuffer || this.crashNoiseBuffer.sampleRate !== ctx.sampleRate) {
+        const bufferSize = Math.floor(ctx.sampleRate * 0.18);
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+        }
+        this.crashNoiseBuffer = buffer;
+      }
+
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.crashNoiseBuffer;
+
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(650, now);
+
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.14, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+      noise.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(ctx.destination);
+      noise.start(now);
+    } catch {
+      // Ignore crash sound errors
     }
-
-    const noise = ctx.createBufferSource();
-    noise.buffer = buffer;
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(650, now);
-
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0.14, now);
-    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-
-    noise.connect(filter);
-    filter.connect(noiseGain);
-    noiseGain.connect(ctx.destination);
-    noise.start(now);
   }
 }
 

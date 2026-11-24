@@ -67,6 +67,7 @@ interface PersistedSettings {
   cameraMode: CameraMode;
   timeOfDay: TimeOfDay;
   isMuted: boolean;
+  showFps: boolean;
   graphicsQuality: GraphicsQuality;
   steeringSensitivity: number;
   keyBindings: KeyBindings;
@@ -120,6 +121,7 @@ function readStoredSettings(): PersistedSettings {
     cameraMode: 'third',
     timeOfDay: 'night',
     isMuted: false,
+    showFps: false,
     graphicsQuality: 'high',
     steeringSensitivity: 1.0,
     keyBindings: sanitizeKeyBindings(null),
@@ -158,7 +160,9 @@ function readStoredSettings(): PersistedSettings {
         ? parsed.timeOfDay
         : fallback.timeOfDay;
     const validQuality: GraphicsQuality =
-      parsed.graphicsQuality === 'low' || parsed.graphicsQuality === 'high'
+      parsed.graphicsQuality === 'low' ||
+      parsed.graphicsQuality === 'medium' ||
+      parsed.graphicsQuality === 'high'
         ? parsed.graphicsQuality
         : fallback.graphicsQuality;
     const rawSens = typeof parsed.steeringSensitivity === 'number' ? parsed.steeringSensitivity : 1.0;
@@ -174,6 +178,7 @@ function readStoredSettings(): PersistedSettings {
       cameraMode: validCam,
       timeOfDay: validTod,
       isMuted: Boolean(parsed.isMuted),
+      showFps: Boolean(parsed.showFps),
       graphicsQuality: validQuality,
       steeringSensitivity: validSens,
       keyBindings: sanitizeKeyBindings(parsed.keyBindings),
@@ -236,6 +241,8 @@ interface SettingsPanelProps {
   setTimeOfDay: (tod: TimeOfDay) => void;
   isMuted: boolean;
   toggleMute: () => void;
+  showFps: boolean;
+  setShowFps: (v: boolean) => void;
   steeringSensitivity: number;
   setSteeringSensitivity: (value: number) => void;
   keyBindings: KeyBindings;
@@ -256,6 +263,8 @@ function SettingsPanel({
   setTimeOfDay,
   isMuted,
   toggleMute,
+  showFps,
+  setShowFps,
   steeringSensitivity,
   setSteeringSensitivity,
   keyBindings,
@@ -299,21 +308,36 @@ function SettingsPanel({
             <Monitor className="w-3.5 h-3.5 text-sky-400" />
             <span>{t.settingGraphics}</span>
           </div>
-          <div className="grid grid-cols-2 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
+          <div className="grid grid-cols-3 gap-1 p-1 bg-[#171C28] border border-white/10 rounded-xl">
             <button
               type="button"
               onClick={() => setGraphicsQuality('high')}
-              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                graphicsQuality === 'high' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              className={`py-1.5 px-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                graphicsQuality === 'high'
+                  ? 'bg-[#262E40] text-white border border-amber-400/50'
+                  : 'text-slate-400 hover:text-white border border-transparent'
               }`}
             >
               {t.graphicsHigh}
             </button>
             <button
               type="button"
+              onClick={() => setGraphicsQuality('medium')}
+              className={`py-1.5 px-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                graphicsQuality === 'medium'
+                  ? 'bg-[#262E40] text-white border border-amber-400/50'
+                  : 'text-slate-400 hover:text-white border border-transparent'
+              }`}
+            >
+              {t.graphicsMedium}
+            </button>
+            <button
+              type="button"
               onClick={() => setGraphicsQuality('low')}
-              className={`py-1.5 px-2 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                graphicsQuality === 'low' ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+              className={`py-1.5 px-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                graphicsQuality === 'low'
+                  ? 'bg-[#262E40] text-white border border-amber-400/50'
+                  : 'text-slate-400 hover:text-white border border-transparent'
               }`}
             >
               {t.graphicsLow}
@@ -407,6 +431,34 @@ function SettingsPanel({
               <span>{t.lightingDay}</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Show FPS */}
+      <div className="flex items-center justify-between gap-3 p-2 rounded-xl bg-[#171C28] border border-white/10">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-300 pl-1">
+          <Gauge className="w-3.5 h-3.5 text-emerald-400" />
+          <span>{t.settingShowFps}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-1 p-0.5 bg-[#111520] border border-white/10 rounded-lg min-w-[144px]">
+          <button
+            type="button"
+            onClick={() => setShowFps(true)}
+            className={`py-1 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              showFps ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            {t.fpsOn}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowFps(false)}
+            className={`py-1 px-2.5 rounded-md text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              !showFps ? 'bg-[#262E40] text-white' : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            {t.fpsOff}
+          </button>
         </div>
       </div>
 
@@ -579,6 +631,10 @@ export default function App() {
   const timeOfDayRef = useRef<TimeOfDay>(initial.timeOfDay);
 
   const [isMuted, setIsMuted] = useState<boolean>(initial.isMuted);
+  const [showFps, setShowFps] = useState<boolean>(initial.showFps);
+  const showFpsRef = useRef<boolean>(initial.showFps);
+  const [fps, setFps] = useState<number>(60);
+
   const [isHornActive, setIsHornActive] = useState<boolean>(false);
   const [dockCollapsed, setDockCollapsed] = useState<boolean>(false);
   const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
@@ -609,40 +665,75 @@ export default function App() {
   });
 
   const pointerSteerActiveRef = useRef<'left' | 'right' | null>(null);
+  const settingsPayloadRef = useRef<PersistedSettings>(initial);
+  const calloutTimersRef = useRef<Set<number>>(new Set());
 
   if (!engineRef.current) {
-    engineRef.current = new Highway3DEngine(readStoredBestScore());
+    const eng = new Highway3DEngine(readStoredBestScore());
+    const initCar = PLAYER_CARS.find((c) => c.id === initial.selectedCar) ?? PLAYER_CARS[0];
+    eng.setVehicleSpecs(
+      initCar.cruiseSpeedKmh,
+      initCar.maxSpeedKmh,
+      initCar.nitroSpeedKmh,
+      initCar.hitboxWidth,
+      initCar.hitboxLength,
+      Boolean(initCar.isMotorcycle)
+    );
+    eng.setSteeringSensitivity(initial.steeringSensitivity);
+    engineRef.current = eng;
   }
 
   const t = TRANSLATIONS[language];
   const numberLocale = language === 'de' ? 'de-DE' : language === 'en' ? 'en-US' : 'ru-RU';
 
-  // Persist user settings and progression whenever they change
+  // Persist user settings and progression (truly debounced so cash gains never stall gameplay frames)
   useEffect(() => {
-    writeStoredSettings({
+    const payload: PersistedSettings = {
       language,
       selectedCar,
       cameraMode,
       timeOfDay,
       isMuted,
+      showFps,
       graphicsQuality,
       steeringSensitivity,
       keyBindings,
       walletCash,
       unlockedCars,
-    });
+    };
+    settingsPayloadRef.current = payload;
+    const timer = window.setTimeout(() => {
+      writeStoredSettings(settingsPayloadRef.current);
+    }, 450);
+    return () => {
+      window.clearTimeout(timer);
+    };
   }, [
     language,
     selectedCar,
     cameraMode,
     timeOfDay,
     isMuted,
+    showFps,
     graphicsQuality,
     steeringSensitivity,
     keyBindings,
     walletCash,
     unlockedCars,
   ]);
+
+  useEffect(() => {
+    const flush = () => writeStoredSettings(settingsPayloadRef.current);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      flush();
+    };
+  }, []);
+
+  useEffect(() => {
+    showFpsRef.current = showFps;
+  }, [showFps]);
 
   useEffect(() => {
     engineRef.current?.setSteeringSensitivity(steeringSensitivity);
@@ -697,6 +788,9 @@ export default function App() {
   const startGame = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     setListeningAction(null);
     setPauseSubView('menu');
     engine.resetRun();
@@ -754,7 +848,14 @@ export default function App() {
   useEffect(() => {
     selectedCarRef.current = selectedCar;
     const opt = PLAYER_CARS.find((c) => c.id === selectedCar) ?? PLAYER_CARS[0];
-    engineRef.current?.setVehicleSpecs(opt.cruiseSpeedKmh, opt.maxSpeedKmh, opt.nitroSpeedKmh);
+    engineRef.current?.setVehicleSpecs(
+      opt.cruiseSpeedKmh,
+      opt.maxSpeedKmh,
+      opt.nitroSpeedKmh,
+      opt.hitboxWidth,
+      opt.hitboxLength,
+      Boolean(opt.isMotorcycle)
+    );
     renderer3DRef.current?.applyCarStyle(selectedCar);
   }, [selectedCar]);
 
@@ -785,12 +886,22 @@ export default function App() {
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine) return;
-    return engine.onCallout((notice) => {
+    const timers = calloutTimersRef.current;
+    const unsub = engine.onCallout((notice) => {
       setCallouts((prev) => [...prev.slice(-2), notice]);
-      window.setTimeout(() => {
+      const id = window.setTimeout(() => {
+        timers.delete(id);
         setCallouts((prev) => prev.filter((item) => item.id !== notice.id));
       }, 1150);
+      timers.add(id);
     });
+    return () => {
+      unsub();
+      for (const id of timers) {
+        window.clearTimeout(id);
+      }
+      timers.clear();
+    };
   }, []);
 
   // Keyboard Controls (dynamic custom keybindings using physical e.code)
@@ -897,6 +1008,7 @@ export default function App() {
     };
 
     const handleBlur = () => {
+      pointerSteerActiveRef.current = null;
       inputRef.current.accelerate = false;
       inputRef.current.brake = false;
       inputRef.current.nitro = false;
@@ -960,41 +1072,48 @@ export default function App() {
     let hudSyncAccum = 0;
     scene3D.syncAndRender(engine, 0.016, cameraModeRef.current, false, true);
 
-    scene3D.startLoop((dt) => {
-      const currentState = gameStateRef.current;
-      if (currentState === 'TITLE_MENU') {
-        engine.updateAmbient(dt);
-      } else if (currentState === 'PLAYING') {
-        const result = engine.update(dt, inputRef.current);
-        if (result.cashDelta > 0) {
-          setWalletCash((prev) => prev + result.cashDelta);
-        }
-        if (result.newBest) {
-          setIsNewRecord(true);
-          writeStoredBestScore(engine.bestScore);
-        }
-        if (result.crashedOut) {
-          engine.setHorn(false);
-          setIsHornActive(false);
-          soundEngine.stopEngine();
-          setHud(engine.getHudSnapshot());
-          syncGameState('GAME_OVER');
-        } else {
-          hudSyncAccum += dt;
-          if (hudSyncAccum >= 0.06) {
-            hudSyncAccum = 0;
+    scene3D.startLoop(
+      (dt) => {
+        const currentState = gameStateRef.current;
+        if (currentState === 'TITLE_MENU') {
+          engine.updateAmbient(dt);
+        } else if (currentState === 'PLAYING') {
+          const result = engine.update(dt, inputRef.current);
+          if (result.cashDelta > 0) {
+            setWalletCash((prev) => prev + result.cashDelta);
+          }
+          if (result.newBest) {
+            setIsNewRecord(true);
+            writeStoredBestScore(engine.bestScore);
+          }
+          if (result.crashedOut) {
+            engine.setHorn(false);
+            setIsHornActive(false);
+            soundEngine.stopEngine();
             setHud(engine.getHudSnapshot());
+            syncGameState('GAME_OVER');
+          } else {
+            hudSyncAccum += dt;
+            if (hudSyncAccum >= 0.06) {
+              hudSyncAccum = 0;
+              setHud(engine.getHudSnapshot());
+            }
           }
         }
-      }
 
-      scene3D.syncAndRender(
-        engine,
-        dt,
-        cameraModeRef.current,
-        inputRef.current.brake && currentState === 'PLAYING'
-      );
-    });
+        scene3D.syncAndRender(
+          engine,
+          dt,
+          cameraModeRef.current,
+          inputRef.current.brake && currentState === 'PLAYING'
+        );
+      },
+      (nextFps) => {
+        if (showFpsRef.current) {
+          setFps(nextFps);
+        }
+      }
+    );
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -1187,6 +1306,12 @@ export default function App() {
                 {nitroPercent}%
               </span>
             </div>
+
+            {showFps && (
+              <div className="px-2 py-0.5 rounded-md bg-[#171C28] border border-white/10 font-mono-tabular text-[11px] font-bold text-emerald-400 whitespace-nowrap shrink-0">
+                {fps} {t.hudFps}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -1351,6 +1476,8 @@ export default function App() {
                   setTimeOfDay={setTimeOfDay}
                   isMuted={isMuted}
                   toggleMute={toggleMute}
+                  showFps={showFps}
+                  setShowFps={setShowFps}
                   steeringSensitivity={steeringSensitivity}
                   setSteeringSensitivity={setSteeringSensitivity}
                   keyBindings={keyBindings}
@@ -1456,6 +1583,8 @@ export default function App() {
                   setTimeOfDay={setTimeOfDay}
                   isMuted={isMuted}
                   toggleMute={toggleMute}
+                  showFps={showFps}
+                  setShowFps={setShowFps}
                   steeringSensitivity={steeringSensitivity}
                   setSteeringSensitivity={setSteeringSensitivity}
                   keyBindings={keyBindings}
@@ -1592,6 +1721,9 @@ export default function App() {
                 onPointerLeave={() => {
                   inputRef.current.brake = false;
                 }}
+                onPointerCancel={() => {
+                  inputRef.current.brake = false;
+                }}
                 className="h-11 px-3 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] active:bg-red-900/60 border border-white/10 text-xs font-semibold text-slate-200 cursor-pointer whitespace-nowrap"
               >
                 {t.dockBrake}
@@ -1606,6 +1738,9 @@ export default function App() {
                   inputRef.current.nitro = false;
                 }}
                 onPointerLeave={() => {
+                  inputRef.current.nitro = false;
+                }}
+                onPointerCancel={() => {
                   inputRef.current.nitro = false;
                 }}
                 className="h-11 px-3 rounded-xl bg-sky-600/90 hover:bg-sky-500 active:bg-sky-400 border border-sky-400/30 flex items-center gap-1.5 text-xs font-semibold text-white cursor-pointer whitespace-nowrap"
@@ -1623,6 +1758,9 @@ export default function App() {
                   inputRef.current.accelerate = false;
                 }}
                 onPointerLeave={() => {
+                  inputRef.current.accelerate = false;
+                }}
+                onPointerCancel={() => {
                   inputRef.current.accelerate = false;
                 }}
                 className="h-11 px-3 rounded-xl bg-[#191F2C] hover:bg-[#232B3D] active:bg-emerald-900/60 border border-white/10 text-xs font-semibold text-slate-200 cursor-pointer whitespace-nowrap"
@@ -1660,6 +1798,7 @@ export default function App() {
                 onPointerDown={() => setHornPressed(true)}
                 onPointerUp={() => setHornPressed(false)}
                 onPointerLeave={() => setHornPressed(false)}
+                onPointerCancel={() => setHornPressed(false)}
                 className={`h-11 px-3.5 rounded-xl border flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer whitespace-nowrap ${
                   isHornActive
                     ? 'bg-amber-500 text-slate-950 border-amber-300'

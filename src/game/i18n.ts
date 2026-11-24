@@ -25,6 +25,7 @@ export interface TranslationBundle {
   settingLanguage: string;
   settingGraphics: string;
   graphicsHigh: string;
+  graphicsMedium: string;
   graphicsLow: string;
   settingCamera: string;
   settingLighting: string;
@@ -39,6 +40,10 @@ export interface TranslationBundle {
   lightingDay: string;
   soundOn: string;
   soundOff: string;
+  settingShowFps: string;
+  fpsOn: string;
+  fpsOff: string;
+  hudFps: string;
   bestScoreLabel: string;
   // Controls customization
   settingControls: string;
@@ -101,6 +106,7 @@ export interface TranslationBundle {
   calloutRepair: string;
   calloutBonus: string;
   calloutHit: string;
+  calloutCurb: string;
   calloutCrash: string;
   // Vehicles
   vehicles: Record<PlayerCarId, { name: string; tag: string }>;
@@ -124,7 +130,8 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     settingLanguage: 'Язык интерфейса',
     settingGraphics: 'Качество графики',
     graphicsHigh: 'Высокая',
-    graphicsLow: 'Низкая (FPS)',
+    graphicsMedium: 'Средняя',
+    graphicsLow: 'Низкая',
     settingCamera: 'Камера по умолчанию',
     settingLighting: 'Время суток',
     settingSound: 'Звук (M)',
@@ -138,6 +145,10 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     lightingDay: 'День',
     soundOn: 'Включён',
     soundOff: 'Выключен',
+    settingShowFps: 'Счётчик FPS',
+    fpsOn: 'Показывать',
+    fpsOff: 'Скрыть',
+    hudFps: 'FPS',
     bestScoreLabel: 'Лучший результат',
     settingControls: 'Управление',
     presetBoth: 'WASD + ←↑↓→',
@@ -202,16 +213,27 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     calloutRepair: '+1 Жизнь',
     calloutBonus: '+60 Бонус',
     calloutHit: 'Столкновение!',
+    calloutCurb: 'Наезд на бордюр!',
     calloutCrash: 'Авария!',
     vehicles: {
       starter: { name: 'Классик Седан', tag: 'Базовый' },
       crimson: { name: 'Спорткар', tag: 'Купе' },
+      audi: { name: 'Audi R8', tag: 'V10 Купе' },
       pickup: { name: 'Пикап Трак', tag: 'Тягач' },
+      bmw: { name: 'BMW M5', tag: 'Седан' },
       amber: { name: 'Маслкар V8', tag: 'Нагнетатель' },
+      hayabusa: { name: 'Suzuki Hayabusa', tag: 'Мотоцикл' },
+      mercedes: { name: 'Mercedes AMG GT', tag: 'Спорткупе' },
       emerald: { name: 'Внедорожник', tag: '4×4' },
+      yamaha: { name: 'Yamaha YZF-R1', tag: 'Супербайк' },
+      gwagon: { name: 'Mercedes G63', tag: 'Гелик' },
       police: { name: 'Полиция', tag: 'Мигалки' },
+      ducati: { name: 'Ducati Panigale V4 R', tag: 'Спортбайк' },
+      porsche: { name: 'Porsche 911', tag: 'Turbo S' },
       cobalt: { name: 'Гиперкар GT', tag: 'Аэро' },
-      tank: { name: 'Боевой танк', tag: 'Броня' },
+      h2r: { name: 'Kawasaki Ninja H2R', tag: 'Гипербайк' },
+      tank: { name: 'Боевой танк', tag: 'Броня · ≤75' },
+      f1: { name: 'Болид F1', tag: 'Топ скорость' },
     },
   },
   de: {
@@ -231,7 +253,8 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     settingLanguage: 'Sprache',
     settingGraphics: 'Grafikqualität',
     graphicsHigh: 'Hoch',
-    graphicsLow: 'Niedrig (FPS)',
+    graphicsMedium: 'Mittel',
+    graphicsLow: 'Niedrig',
     settingCamera: 'Standardkamera',
     settingLighting: 'Tageszeit',
     settingSound: 'Ton (M)',
@@ -245,6 +268,10 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     lightingDay: 'Tag',
     soundOn: 'An',
     soundOff: 'Aus',
+    settingShowFps: 'FPS-Anzeige',
+    fpsOn: 'Ein',
+    fpsOff: 'Aus',
+    hudFps: 'FPS',
     bestScoreLabel: 'Highscore',
     settingControls: 'Steuerung',
     presetBoth: 'WASD + Pfeile',
@@ -309,16 +336,27 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     calloutRepair: '+1 Leben',
     calloutBonus: '+60 Bonus',
     calloutHit: 'Kollision!',
+    calloutCurb: 'Bordstein!',
     calloutCrash: 'Unfall!',
     vehicles: {
       starter: { name: 'Basis-Limousine', tag: 'Standard' },
       crimson: { name: 'Sportwagen', tag: 'Coupé' },
+      audi: { name: 'Audi R8', tag: 'V10 Coupé' },
       pickup: { name: 'Pickup-Truck', tag: 'Schwer' },
+      bmw: { name: 'BMW M5', tag: 'Limousine' },
       amber: { name: 'Muscle V8', tag: 'Kompressor' },
+      hayabusa: { name: 'Suzuki Hayabusa', tag: 'Motorrad' },
+      mercedes: { name: 'Mercedes AMG GT', tag: 'Sportcoupé' },
       emerald: { name: 'Geländewagen', tag: '4×4' },
+      yamaha: { name: 'Yamaha YZF-R1', tag: 'Superbike' },
+      gwagon: { name: 'Mercedes G63', tag: 'G-Klasse' },
       police: { name: 'Polizei', tag: 'Blaulicht' },
+      ducati: { name: 'Ducati Panigale V4 R', tag: 'Superbike' },
+      porsche: { name: 'Porsche 911', tag: 'Turbo S' },
       cobalt: { name: 'Hypercar GT', tag: 'Aero' },
-      tank: { name: 'Kampfpanzer', tag: 'Panzerung' },
+      h2r: { name: 'Kawasaki Ninja H2R', tag: 'Hyperbike' },
+      tank: { name: 'Kampfpanzer', tag: 'Panzer · ≤75' },
+      f1: { name: 'Formel-1', tag: 'Top-Speed' },
     },
   },
   en: {
@@ -338,7 +376,8 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     settingLanguage: 'Language',
     settingGraphics: 'Graphics Quality',
     graphicsHigh: 'High',
-    graphicsLow: 'Low (Performance)',
+    graphicsMedium: 'Medium',
+    graphicsLow: 'Low',
     settingCamera: 'Default Camera',
     settingLighting: 'Time of Day',
     settingSound: 'Audio (M)',
@@ -352,6 +391,10 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     lightingDay: 'Day',
     soundOn: 'On',
     soundOff: 'Off',
+    settingShowFps: 'Show FPS',
+    fpsOn: 'On',
+    fpsOff: 'Off',
+    hudFps: 'FPS',
     bestScoreLabel: 'Best Score',
     settingControls: 'Controls',
     presetBoth: 'WASD + Arrows',
@@ -416,16 +459,27 @@ export const TRANSLATIONS: Record<Language, TranslationBundle> = {
     calloutRepair: '+1 Life',
     calloutBonus: '+60 Bonus',
     calloutHit: 'Collision!',
+    calloutCurb: 'Hit Curb!',
     calloutCrash: 'Wrecked!',
     vehicles: {
       starter: { name: 'Classic Sedan', tag: 'Starter' },
       crimson: { name: 'Sportcar', tag: 'Coupe' },
+      audi: { name: 'Audi R8', tag: 'V10 Coupe' },
       pickup: { name: 'Heavy Pickup', tag: 'Truck' },
+      bmw: { name: 'BMW M5', tag: 'Sport Sedan' },
       amber: { name: 'Muscle V8', tag: 'Blower' },
+      hayabusa: { name: 'Suzuki Hayabusa', tag: 'Superbike' },
+      mercedes: { name: 'Mercedes AMG GT', tag: 'GT Coupe' },
       emerald: { name: 'Off-Roader', tag: '4×4' },
+      yamaha: { name: 'Yamaha YZF-R1', tag: 'Superbike' },
+      gwagon: { name: 'Mercedes G63', tag: 'G-Class' },
       police: { name: 'Police Cruiser', tag: 'Siren' },
+      ducati: { name: 'Ducati Panigale V4 R', tag: 'Superbike' },
+      porsche: { name: 'Porsche 911', tag: 'Turbo S' },
       cobalt: { name: 'Hypercar GT', tag: 'Aero' },
-      tank: { name: 'Battle Tank', tag: 'Armored' },
+      h2r: { name: 'Kawasaki Ninja H2R', tag: 'Hyperbike' },
+      tank: { name: 'Battle Tank', tag: 'Armor · ≤75' },
+      f1: { name: 'Formula 1', tag: 'Top Speed' },
     },
   },
 };

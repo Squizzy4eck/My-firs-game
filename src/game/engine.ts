@@ -130,6 +130,115 @@ const TRAFFIC_BLUEPRINTS: TrafficBlueprint3D[] = [
       { body: '#0284C7', roof: '#E0F2FE' },
     ],
   },
+  {
+    kind: 'audi',
+    width: 2.02,
+    length: 4.55,
+    minSpeed: 72,
+    maxSpeed: 88,
+    colors: [
+      { body: '#6B7280', roof: '#1F2937' },
+      { body: '#1D4ED8', roof: '#1E3A8A' },
+      { body: '#B91C1C', roof: '#7F1D1D' },
+      { body: '#18181B', roof: '#09090B' },
+    ],
+  },
+  {
+    kind: 'bmw',
+    width: 2.02,
+    length: 4.55,
+    minSpeed: 74,
+    maxSpeed: 90,
+    colors: [
+      { body: '#1D4ED8', roof: '#1E3A8A' },
+      { body: '#E2E8F0', roof: '#94A3B8' },
+      { body: '#111827', roof: '#0F172A' },
+      { body: '#047857', roof: '#064E3B' },
+    ],
+  },
+  {
+    kind: 'mercedes',
+    width: 2.04,
+    length: 4.65,
+    minSpeed: 74,
+    maxSpeed: 90,
+    colors: [
+      { body: '#0F172A', roof: '#1E293B' },
+      { body: '#94A3B8', roof: '#64748B' },
+      { body: '#065F46', roof: '#064E3B' },
+      { body: '#991B1B', roof: '#7F1D1D' },
+    ],
+  },
+  {
+    kind: 'gwagon',
+    width: 2.18,
+    length: 4.75,
+    minSpeed: 64,
+    maxSpeed: 80,
+    colors: [
+      { body: '#18181B', roof: '#09090B' },
+      { body: '#F1F5F9', roof: '#CBD5E1' },
+      { body: '#4D5D43', roof: '#36422E' },
+    ],
+  },
+  {
+    kind: 'porsche',
+    width: 2.02,
+    length: 4.35,
+    minSpeed: 78,
+    maxSpeed: 96,
+    colors: [
+      { body: '#EAB308', roof: '#CA8A04' },
+      { body: '#DC2626', roof: '#991B1B' },
+      { body: '#CBD5E1', roof: '#94A3B8' },
+      { body: '#0EA5E9', roof: '#0284C7' },
+    ],
+  },
+  {
+    kind: 'lambo',
+    width: 2.08,
+    length: 4.4,
+    minSpeed: 82,
+    maxSpeed: 102,
+    colors: [
+      { body: '#22C55E', roof: '#15803D' },
+      { body: '#F97316', roof: '#C2410C' },
+      { body: '#FACC15', roof: '#CA8A04' },
+      { body: '#18181B', roof: '#09090B' },
+    ],
+  },
+  {
+    kind: 'hayabusa',
+    width: 0.92,
+    length: 2.22,
+    minSpeed: 84,
+    maxSpeed: 104,
+    colors: [{ body: '#1E3A8A', roof: '#CBD5E1' }],
+  },
+  {
+    kind: 'yamaha',
+    width: 0.88,
+    length: 2.18,
+    minSpeed: 86,
+    maxSpeed: 106,
+    colors: [{ body: '#1D4ED8', roof: '#0F172A' }],
+  },
+  {
+    kind: 'ducati',
+    width: 0.88,
+    length: 2.18,
+    minSpeed: 88,
+    maxSpeed: 108,
+    colors: [{ body: '#DC2626', roof: '#18181B' }],
+  },
+  {
+    kind: 'h2r',
+    width: 0.9,
+    length: 2.2,
+    minSpeed: 90,
+    maxSpeed: 110,
+    colors: [{ body: '#16A34A', roof: '#111827' }],
+  },
 ];
 
 export class Highway3DEngine {
@@ -143,6 +252,9 @@ export class Highway3DEngine {
   public cruiseSpeedKmh: number = 104;
   public maxSpeedKmh: number = 150;
   public nitroSpeedKmh: number = 172;
+  public playerWidth: number = PLAYER_WIDTH_3D;
+  public playerLength: number = PLAYER_LENGTH_3D;
+  public isMotorcycle: boolean = false;
   public speedKmh: number = 104;
   public nitro: number = 65;
   public isNitroActive: boolean = false;
@@ -174,16 +286,28 @@ export class Highway3DEngine {
   private pickupCooldown: number = 6.5;
   private nextId: number = 1;
   private calloutListeners: Array<(c: CalloutNotice) => void> = [];
+  private blockedBySlowAhead = new Set<number>();
+  private laneCarsScratch: [TrafficVehicle[], TrafficVehicle[], TrafficVehicle[]] = [[], [], []];
 
   constructor(bestScore: number) {
     this.bestScore = bestScore;
     this.seedAmbientTraffic();
   }
 
-  public setVehicleSpecs(cruiseSpeedKmh: number, maxSpeedKmh: number, nitroSpeedKmh: number) {
+  public setVehicleSpecs(
+    cruiseSpeedKmh: number,
+    maxSpeedKmh: number,
+    nitroSpeedKmh: number,
+    playerWidth: number = PLAYER_WIDTH_3D,
+    playerLength: number = PLAYER_LENGTH_3D,
+    isMotorcycle: boolean = false
+  ) {
     this.cruiseSpeedKmh = cruiseSpeedKmh;
     this.maxSpeedKmh = maxSpeedKmh;
     this.nitroSpeedKmh = nitroSpeedKmh;
+    this.playerWidth = playerWidth;
+    this.playerLength = playerLength;
+    this.isMotorcycle = isMotorcycle;
   }
 
   public setSteeringSensitivity(value: number) {
@@ -226,8 +350,8 @@ export class Highway3DEngine {
     this.shakeTimer = 0;
     this.hornActive = false;
     this.hornFlashTimer = 0;
-    this.gear = 3;
-    this.prevGear = 3;
+    this.gear = this.cruiseSpeedKmh < 85 ? 1 : 3;
+    this.prevGear = this.gear;
     this.gearShiftTimer = 0;
     this.gearShiftCooldown = 0;
     this.spawnCooldown = 0.7;
@@ -241,67 +365,82 @@ export class Highway3DEngine {
   private seedAmbientTraffic() {
     this.traffic = [];
     const presets: Array<{ lane: LaneIndex; z: number; bpIndex: number }> = [
-      { lane: 0, z: -48, bpIndex: 0 },
-      { lane: 2, z: -92, bpIndex: 1 },
-      { lane: 1, z: -140, bpIndex: 2 },
+      { lane: 0, z: -48, bpIndex: 9 },
+      { lane: 2, z: -92, bpIndex: 10 },
+      { lane: 1, z: -140, bpIndex: 11 },
     ];
     for (const p of presets) {
-      const bp = TRAFFIC_BLUEPRINTS[p.bpIndex];
+      const bp = TRAFFIC_BLUEPRINTS[p.bpIndex] ?? TRAFFIC_BLUEPRINTS[0];
       const palette = bp.colors[0];
       this.traffic.push({
         id: this.nextId++,
         kind: bp.kind,
         lane: p.lane,
+        targetLane: p.lane,
         x: getLaneX3D(p.lane),
         z: p.z,
+        yaw: 0,
         width: bp.width,
         length: bp.length,
-        speed: 65,
-        baseSpeed: 65,
+        speed: 70,
+        baseSpeed: 70,
         color: palette.body,
         secondaryColor: palette.roof,
         braking: false,
         nearMissed: false,
         hornReactionTimer: 0,
+        laneChangePrepTimer: 0,
+        laneChangeCooldown: 3.5 + Math.random() * 3.0,
+        turnSignal: 0,
       });
     }
   }
 
   private seedStarterTraffic() {
-    const bp0 = TRAFFIC_BLUEPRINTS[0];
-    const bp1 = TRAFFIC_BLUEPRINTS[1];
+    const bp0 = TRAFFIC_BLUEPRINTS[9] ?? TRAFFIC_BLUEPRINTS[0]; // Audi
+    const bp1 = TRAFFIC_BLUEPRINTS[10] ?? TRAFFIC_BLUEPRINTS[1]; // BMW
     this.traffic.push(
       {
         id: this.nextId++,
         kind: bp0.kind,
         lane: 0,
+        targetLane: 0,
         x: getLaneX3D(0),
         z: -85,
+        yaw: 0,
         width: bp0.width,
         length: bp0.length,
-        speed: 66,
-        baseSpeed: 66,
-        color: bp0.colors[1].body,
-        secondaryColor: bp0.colors[1].roof,
+        speed: 68,
+        baseSpeed: 68,
+        color: bp0.colors[0].body,
+        secondaryColor: bp0.colors[0].roof,
         braking: false,
         nearMissed: false,
         hornReactionTimer: 0,
+        laneChangePrepTimer: 0,
+        laneChangeCooldown: 3.5 + Math.random() * 3.0,
+        turnSignal: 0,
       },
       {
         id: this.nextId++,
         kind: bp1.kind,
         lane: 2,
+        targetLane: 2,
         x: getLaneX3D(2),
         z: -130,
+        yaw: 0,
         width: bp1.width,
         length: bp1.length,
-        speed: 68,
-        baseSpeed: 68,
+        speed: 72,
+        baseSpeed: 72,
         color: bp1.colors[0].body,
         secondaryColor: bp1.colors[0].roof,
         braking: false,
         nearMissed: false,
         hornReactionTimer: 0,
+        laneChangePrepTimer: 0,
+        laneChangeCooldown: 4.0 + Math.random() * 3.0,
+        turnSignal: 0,
       }
     );
   }
@@ -386,15 +525,19 @@ export class Highway3DEngine {
     } else if (input.accelerate) {
       targetSpeed = this.maxSpeedKmh;
     } else if (input.brake) {
-      targetSpeed = 78;
+      targetSpeed = Math.min(78, Math.max(36, Math.round(this.cruiseSpeedKmh * 0.68)));
     }
 
-    const accelRate = this.isNitroActive ? 290 : input.brake ? 260 : 165;
+    const accelRate = this.isNitroActive ? 310 : input.brake ? 260 : 185;
     if (this.speedKmh < targetSpeed) {
       this.speedKmh = Math.min(targetSpeed, this.speedKmh + accelRate * dt);
     } else if (this.speedKmh > targetSpeed) {
       this.speedKmh = Math.max(targetSpeed, this.speedKmh - accelRate * dt);
     }
+    this.speedKmh = Math.min(this.speedKmh, Math.max(this.maxSpeedKmh, this.nitroSpeedKmh));
+
+    const safeDt = Number.isFinite(dt) ? Math.max(0.0005, Math.min(0.05, dt)) : 0.016;
+    dt = safeDt;
 
     // 2. Realistic Speed-Coupled Steering Physics across full highway width
     const sens = this.steeringSensitivity;
@@ -416,15 +559,30 @@ export class Highway3DEngine {
     this.playerVx += (targetVx - this.playerVx) * (1 - Math.exp(-14 * dt));
     this.playerX += this.playerVx * dt;
 
-    const maxPlayerX = TOTAL_ASPHALT_WIDTH_3D / 2 - PLAYER_WIDTH_3D / 2 - 0.25;
-    if (this.playerX < -maxPlayerX) {
-      this.playerX = -maxPlayerX;
-      if (this.playerVx < 0) this.playerVx = 0;
-      if (this.playerYaw > 0) this.playerYaw *= Math.exp(-14 * dt);
-    } else if (this.playerX > maxPlayerX) {
-      this.playerX = maxPlayerX;
-      if (this.playerVx > 0) this.playerVx = 0;
-      if (this.playerYaw < 0) this.playerYaw *= Math.exp(-14 * dt);
+    if (!Number.isFinite(this.playerX)) this.playerX = 0;
+    if (!Number.isFinite(this.playerVx)) this.playerVx = 0;
+    if (!Number.isFinite(this.playerYaw)) this.playerYaw = 0;
+
+    let crashedOut = false;
+    const maxPlayerX = TOTAL_ASPHALT_WIDTH_3D / 2 - this.playerWidth / 2 - 0.25;
+    const curbTriggerX = TOTAL_ASPHALT_WIDTH_3D / 2 - this.playerWidth / 2 - 0.36;
+
+    if (Math.abs(this.playerX) >= curbTriggerX) {
+      const side: -1 | 1 = this.playerX >= 0 ? 1 : -1;
+      if (Math.abs(this.playerX) > maxPlayerX) {
+        this.playerX = side * maxPlayerX;
+      }
+      if (this.invulnerableTimer <= 0) {
+        this.handleCurbHit(side);
+        if (this.lives <= 0) {
+          crashedOut = true;
+        }
+      } else {
+        if (side < 0 && this.playerVx < 0) this.playerVx = 0;
+        if (side > 0 && this.playerVx > 0) this.playerVx = 0;
+        if (side < 0 && this.playerYaw > 0) this.playerYaw *= Math.exp(-14 * dt);
+        if (side > 0 && this.playerYaw < 0) this.playerYaw *= Math.exp(-14 * dt);
+      }
     }
 
     const nearestLane = Math.max(
@@ -433,12 +591,11 @@ export class Highway3DEngine {
     ) as LaneIndex;
     this.targetLane = nearestLane;
 
-    // Outward suspension roll from centrifugal force (turning right leans roof left -> +roll)
-    const targetRoll = Math.max(
-      -0.048,
-      Math.min(0.048, this.playerVx * 0.0045 + this.steerInput * 0.014)
-    );
-    const rollBlend = 1 - Math.exp(-9 * dt);
+    // Motorcycles lean deeply into the turn; cars lean slightly outward from centrifugal force
+    const targetRoll = this.isMotorcycle
+      ? Math.max(-0.34, Math.min(0.34, -this.playerVx * 0.032 - this.steerInput * 0.14))
+      : Math.max(-0.048, Math.min(0.048, this.playerVx * 0.0045 + this.steerInput * 0.014));
+    const rollBlend = 1 - Math.exp(-(this.isMotorcycle ? 11 : 9) * dt);
     this.playerRoll += (targetRoll - this.playerRoll) * rollBlend;
 
     // 3. Road Scroll & Telemetry
@@ -503,12 +660,13 @@ export class Highway3DEngine {
       }
     }
 
-    // Nitro exhaust particles
-    if (this.isNitroActive && Math.random() < 0.75) {
+    // Nitro exhaust particles (capped cleanly at 48)
+    if (this.isNitroActive && this.particles.length < 44 && Math.random() < 0.75) {
+      const sideOffset = this.isMotorcycle ? 0 : Math.random() > 0.5 ? 0.45 : -0.45;
       this.particles.push({
-        x: this.playerX + (Math.random() > 0.5 ? 0.45 : -0.45) + (Math.random() - 0.5) * 0.12,
+        x: this.playerX + sideOffset + (Math.random() - 0.5) * 0.12,
         y: 0.38,
-        z: PLAYER_Z + PLAYER_LENGTH_3D * 0.5 + 0.15,
+        z: PLAYER_Z + this.playerLength * 0.5 + 0.15,
         vx: (Math.random() - 0.5) * 0.6,
         vy: 0.3 + Math.random() * 0.6,
         vz: 14 + Math.random() * 8,
@@ -525,7 +683,10 @@ export class Highway3DEngine {
       this.trySpawnTraffic();
       const baseInterval = Math.max(0.45, 1.18 - this.distanceKm * 0.032);
       const speedFactor = 130 / Math.max(95, this.speedKmh);
-      this.spawnCooldown = baseInterval * speedFactor * (0.78 + Math.random() * 0.44);
+      this.spawnCooldown = Math.max(
+        0.24,
+        baseInterval * speedFactor * (0.78 + Math.random() * 0.44)
+      );
     }
 
     this.pickupCooldown -= dt;
@@ -534,11 +695,22 @@ export class Highway3DEngine {
       this.pickupCooldown = 6.0 + Math.random() * 4.5;
     }
 
-    // 5. Prevent Traffic Rear-End Overlaps per Lane
+    // 5. Prevent Traffic Rear-End Overlaps & Execute NPC Lane Changes
+    const blockedBySlowAhead = this.blockedBySlowAhead;
+    blockedBySlowAhead.clear();
+    this.laneCarsScratch[0].length = 0;
+    this.laneCarsScratch[1].length = 0;
+    this.laneCarsScratch[2].length = 0;
+    for (const c of this.traffic) {
+      this.laneCarsScratch[c.lane].push(c);
+      if (c.targetLane !== c.lane) {
+        this.laneCarsScratch[c.targetLane].push(c);
+      }
+    }
+
     for (let lane = 0; lane < 3; lane++) {
-      const laneCars = this.traffic
-        .filter((c) => c.lane === lane)
-        .sort((a, b) => a.z - b.z); // farthest ahead (-Z) first
+      const laneCars = this.laneCarsScratch[lane];
+      laneCars.sort((a, b) => a.z - b.z); // farthest ahead (-Z) first
 
       for (let i = 0; i < laneCars.length; i++) {
         const car = laneCars[i];
@@ -549,12 +721,15 @@ export class Highway3DEngine {
         const ahead = i > 0 ? laneCars[i - 1] : null;
         if (ahead) {
           const gap = car.z - car.length / 2 - (ahead.z + ahead.length / 2);
-          if (gap < 7.5) {
+          if (gap < 8.0) {
             car.speed = Math.min(car.speed, ahead.speed);
             car.braking = true;
           } else {
             car.speed = Math.min(car.baseSpeed, car.speed + 20 * dt);
             car.braking = false;
+          }
+          if (gap < 18 && ahead.baseSpeed < car.baseSpeed - 3) {
+            blockedBySlowAhead.add(car.id);
           }
         } else {
           car.speed = Math.min(car.baseSpeed, car.speed + 20 * dt);
@@ -563,16 +738,17 @@ export class Highway3DEngine {
       }
     }
 
+    this.updateTrafficLaneChanges(dt, blockedBySlowAhead);
+
     // 6. Move Traffic & Check Collisions / Near-Misses
-    let crashedOut = false;
     const remainingTraffic: TrafficVehicle[] = [];
 
     for (const car of this.traffic) {
       const relMeters = (this.speedKmh - car.speed) * KMH_TO_MPS * dt;
       car.z += relMeters;
 
-      const hitX = (PLAYER_WIDTH_3D + car.width) / 2 - 0.25;
-      const hitZ = (PLAYER_LENGTH_3D + car.length) / 2 - 0.35;
+      const hitX = (this.playerWidth + car.width) / 2 - 0.22;
+      const hitZ = (this.playerLength + car.length) / 2 - 0.3;
       const absDx = Math.abs(this.playerX - car.x);
       const absDz = Math.abs(PLAYER_Z - car.z);
 
@@ -584,7 +760,8 @@ export class Highway3DEngine {
           }
         }
       } else if (!car.nearMissed && absDz < hitZ + 0.9 && absDx < hitX + LANE_WIDTH_3D * 0.45) {
-        if (this.speedKmh >= 115) {
+        const minNearMissSpeed = Math.min(115, Math.round(this.maxSpeedKmh * 0.85));
+        if (this.speedKmh >= minNearMissSpeed) {
           car.nearMissed = true;
           this.nearMissCount += 1;
           this.score += 50;
@@ -601,6 +778,8 @@ export class Highway3DEngine {
         this.score += 15;
         this.runCash += 10;
         cashDelta += 10;
+      } else if (car.z < SPAWN_Z - 65) {
+        // Despawn cars that pulled far ahead (e.g. when driving slower vehicles like Tank)
       } else {
         remainingTraffic.push(car);
       }
@@ -614,7 +793,7 @@ export class Highway3DEngine {
       item.phase += dt * 3.5;
 
       const dist = Math.hypot(this.playerX - item.x, PLAYER_Z - item.z);
-      if (dist < item.radius + PLAYER_WIDTH_3D * 0.8) {
+      if (dist < item.radius + Math.max(0.75, this.playerWidth * 0.8)) {
         soundEngine.playPickup();
         if (item.kind === 'nitro') {
           this.nitro = Math.min(100, this.nitro + 36);
@@ -664,13 +843,17 @@ export class Highway3DEngine {
   private handleCollision(car: TrafficVehicle) {
     this.lives = Math.max(0, this.lives - 1);
     this.invulnerableTimer = 1.65;
-    this.speedKmh = Math.max(88, this.speedKmh * 0.62);
+    const minRecoverySpeed = Math.min(88, Math.round(this.cruiseSpeedKmh * 0.72));
+    this.speedKmh = Math.max(minRecoverySpeed, this.speedKmh * 0.62);
     this.isNitroActive = false;
     this.shakeTimer = 0.38;
     soundEngine.playCrash();
 
     car.z -= 4.5;
 
+    if (this.particles.length > 24) {
+      this.particles.splice(0, this.particles.length - 24);
+    }
     for (let i = 0; i < 24; i++) {
       const angle = Math.random() * Math.PI * 2;
       const spd = 4 + Math.random() * 11;
@@ -691,7 +874,51 @@ export class Highway3DEngine {
     this.emitCallout(this.lives > 0 ? 'hit' : 'crash', this.lives > 0 ? 'Столкновение!' : 'Авария!', 'red');
   }
 
+  private handleCurbHit(side: -1 | 1) {
+    this.lives = Math.max(0, this.lives - 1);
+    this.invulnerableTimer = 1.45;
+    const minRecoverySpeed = Math.min(82, Math.round(this.cruiseSpeedKmh * 0.72));
+    this.speedKmh = Math.max(minRecoverySpeed, this.speedKmh * 0.72);
+    this.isNitroActive = false;
+    this.shakeTimer = 0.34;
+    soundEngine.playCrash();
+
+    // Gently deflect vehicle back inside the asphalt shoulder so it doesn't stick to the curb
+    const safeClearX = TOTAL_ASPHALT_WIDTH_3D / 2 - this.playerWidth / 2 - 0.65;
+    this.playerX = side * Math.max(0, safeClearX);
+    this.playerVx = -side * 3.4;
+    this.playerYaw = side * 0.08;
+
+    if (this.particles.length > 30) {
+      this.particles.splice(0, this.particles.length - 30);
+    }
+    const sparkX = side * (TOTAL_ASPHALT_WIDTH_3D / 2 - 0.25);
+    for (let i = 0; i < 16; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const spd = 3 + Math.random() * 8;
+      this.particles.push({
+        x: sparkX,
+        y: 0.35 + Math.random() * 0.45,
+        z: PLAYER_Z + (Math.random() - 0.5) * 1.4,
+        vx: -side * (2 + Math.random() * 4) + Math.cos(angle) * 2,
+        vy: 2 + Math.random() * 5,
+        vz: Math.sin(angle) * spd + 5,
+        life: 0.28 + Math.random() * 0.2,
+        maxLife: 0.48,
+        size: 0.14,
+        color: Math.random() > 0.35 ? '#FBBF24' : '#FB7185',
+      });
+    }
+
+    this.emitCallout(
+      this.lives > 0 ? 'curb' : 'crash',
+      this.lives > 0 ? 'Наезд на бордюр!' : 'Авария!',
+      'red'
+    );
+  }
+
   private trySpawnTraffic() {
+    if (this.traffic.length >= 12) return;
     const candidateLanes: LaneIndex[] = [0, 1, 2];
     for (let i = candidateLanes.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -703,6 +930,7 @@ export class Highway3DEngine {
     for (const c of this.traffic) {
       if (c.z - c.length / 2 < -150) {
         occupiedInBand.add(c.lane);
+        occupiedInBand.add(c.targetLane);
       }
     }
     if (occupiedInBand.size >= 2) {
@@ -711,7 +939,7 @@ export class Highway3DEngine {
 
     for (const lane of candidateLanes) {
       const tooClose = this.traffic.some(
-        (c) => c.lane === lane && c.z - c.length / 2 < -162
+        (c) => (c.lane === lane || c.targetLane === lane) && c.z - c.length / 2 < -162
       );
       if (tooClose) continue;
 
@@ -723,8 +951,10 @@ export class Highway3DEngine {
         id: this.nextId++,
         kind: bp.kind,
         lane,
+        targetLane: lane,
         x: getLaneX3D(lane),
         z: SPAWN_Z - bp.length / 2,
+        yaw: 0,
         width: bp.width,
         length: bp.length,
         speed,
@@ -734,8 +964,118 @@ export class Highway3DEngine {
         braking: false,
         nearMissed: false,
         hornReactionTimer: 0,
+        laneChangePrepTimer: 0,
+        laneChangeCooldown: 2.2 + Math.random() * 4.5,
+        turnSignal: 0,
       });
       return;
+    }
+  }
+
+  private canSafelyChangeLane(car: TrafficVehicle, destLane: LaneIndex): boolean {
+    const destX = getLaneX3D(destLane);
+
+    // Never cut right in front of the player
+    if (car.z > -46 && Math.abs(this.playerX - destX) < 2.8) {
+      return false;
+    }
+
+    for (const other of this.traffic) {
+      if (other.id === car.id) continue;
+      const occupiesDest =
+        other.lane === destLane ||
+        other.targetLane === destLane ||
+        Math.abs(other.x - destX) < 2.25;
+      if (!occupiesDest) continue;
+
+      const minGap = (car.length + other.length) / 2 + 10.5;
+      if (Math.abs(car.z - other.z) < minGap) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private updateTrafficLaneChanges(dt: number, blockedBySlowAhead: Set<number>) {
+    for (const car of this.traffic) {
+      // 1. Pre-merge blinker warning before steering laterally
+      if (car.laneChangePrepTimer > 0) {
+        car.laneChangePrepTimer = Math.max(0, car.laneChangePrepTimer - dt);
+        const intended = (car.lane + car.turnSignal) as LaneIndex;
+        if (
+          intended < 0 ||
+          intended > 2 ||
+          car.z > -22 ||
+          !this.canSafelyChangeLane(car, intended)
+        ) {
+          car.laneChangePrepTimer = 0;
+          car.turnSignal = 0;
+          car.laneChangeCooldown = 1.8 + Math.random() * 2.0;
+        } else if (car.laneChangePrepTimer === 0) {
+          car.targetLane = intended;
+        }
+        continue;
+      }
+
+      // 2. Actively steering smoothly across into targetLane
+      if (car.lane !== car.targetLane) {
+        const destX = getLaneX3D(car.targetLane);
+        const dx = destX - car.x;
+        const lateralSpeed = 3.55;
+        const step = lateralSpeed * dt;
+
+        if (Math.abs(dx) <= step) {
+          car.x = destX;
+          car.lane = car.targetLane;
+          car.turnSignal = 0;
+          car.laneChangeCooldown =
+            car.kind === 'truck' || car.kind === 'bus'
+              ? 6.0 + Math.random() * 5.0
+              : 2.8 + Math.random() * 4.5;
+        } else {
+          car.x += Math.sign(dx) * step;
+          const targetYaw = -Math.sign(dx) * Math.min(0.095, Math.abs(dx) * 0.048);
+          car.yaw += (targetYaw - car.yaw) * (1 - Math.exp(-10 * dt));
+        }
+        continue;
+      }
+
+      // 3. Centered in lane: smoothly level yaw & evaluate next lane change
+      car.yaw *= Math.exp(-11 * dt);
+      if (Math.abs(car.yaw) < 0.001) car.yaw = 0;
+
+      if (car.laneChangeCooldown > 0) {
+        car.laneChangeCooldown = Math.max(0, car.laneChangeCooldown - dt);
+      }
+
+      const wantsOvertake = blockedBySlowAhead.has(car.id);
+      if ((wantsOvertake || car.laneChangeCooldown <= 0) && car.z < -28 && car.z > -158) {
+        // Trucks & buses mostly stay in lane unless overtaking
+        if ((car.kind === 'truck' || car.kind === 'bus') && !wantsOvertake && Math.random() < 0.65) {
+          car.laneChangeCooldown = 4.5 + Math.random() * 3.5;
+          continue;
+        }
+
+        const candidates: LaneIndex[] = [];
+        if (car.lane > 0) candidates.push((car.lane - 1) as LaneIndex);
+        if (car.lane < 2) candidates.push((car.lane + 1) as LaneIndex);
+        if (candidates.length === 2 && Math.random() < 0.5) {
+          [candidates[0], candidates[1]] = [candidates[1], candidates[0]];
+        }
+
+        let started = false;
+        for (const dest of candidates) {
+          if (this.canSafelyChangeLane(car, dest)) {
+            car.turnSignal = dest < car.lane ? -1 : 1;
+            car.laneChangePrepTimer = 0.55;
+            started = true;
+            break;
+          }
+        }
+        if (!started) {
+          car.laneChangeCooldown = 1.4 + Math.random() * 1.8;
+        }
+      }
     }
   }
 
