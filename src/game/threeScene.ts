@@ -41,8 +41,8 @@ const _handPos = new THREE.Vector3();
 const _armDir = new THREE.Vector3();
 const _armMid = new THREE.Vector3();
 const _upAxis = new THREE.Vector3(0, 1, 0);
-const _elbowLeft = new THREE.Vector3(-0.56, 0.72, 0.22);
-const _elbowRight = new THREE.Vector3(-0.1, 0.7, 0.21);
+const _elbowLeft = new THREE.Vector3(-0.54, 0.78, 0.18);
+const _elbowRight = new THREE.Vector3(-0.15, 0.79, 0.18);
 
 const GEAR_GATE_ANGLES: Record<number, { rx: number; rz: number }> = {
   1: { rx: -0.18, rz: 0.16 },
@@ -525,12 +525,222 @@ function buildDriverHand(
   return hand;
 }
 
+interface RiderGeometries {
+  helmetShell: THREE.SphereGeometry;
+  helmetVisor: THREE.BoxGeometry;
+  helmetLip: THREE.BoxGeometry;
+  torso: THREE.BoxGeometry;
+  backHump: THREE.BoxGeometry;
+  chestStripe: THREE.BoxGeometry;
+  pelvis: THREE.BoxGeometry;
+  upperArm: THREE.CylinderGeometry;
+  forearm: THREE.CylinderGeometry;
+  glove: THREE.BoxGeometry;
+  jointSphere: THREE.SphereGeometry;
+  thigh: THREE.CylinderGeometry;
+  shin: THREE.CylinderGeometry;
+  boot: THREE.BoxGeometry;
+}
+
+let _riderGeos: RiderGeometries | null = null;
+function getRiderGeometries(): RiderGeometries {
+  if (_riderGeos) return _riderGeos;
+  _riderGeos = {
+    helmetShell: new THREE.SphereGeometry(0.145, 16, 12),
+    helmetVisor: new THREE.BoxGeometry(0.21, 0.082, 0.12),
+    helmetLip: new THREE.BoxGeometry(0.14, 0.03, 0.08),
+    torso: new THREE.BoxGeometry(0.32, 0.44, 0.22),
+    backHump: new THREE.BoxGeometry(0.16, 0.24, 0.11),
+    chestStripe: new THREE.BoxGeometry(0.33, 0.09, 0.23),
+    pelvis: new THREE.BoxGeometry(0.26, 0.14, 0.26),
+    upperArm: new THREE.CylinderGeometry(0.052, 0.044, 1, 8),
+    forearm: new THREE.CylinderGeometry(0.042, 0.033, 1, 8),
+    glove: new THREE.BoxGeometry(0.068, 0.065, 0.095),
+    jointSphere: new THREE.SphereGeometry(0.052, 10, 8),
+    thigh: new THREE.CylinderGeometry(0.072, 0.056, 1, 8),
+    shin: new THREE.CylinderGeometry(0.052, 0.038, 1, 8),
+    boot: new THREE.BoxGeometry(0.082, 0.085, 0.21),
+  };
+  return _riderGeos;
+}
+
+const _riderStart = new THREE.Vector3();
+const _riderEnd = new THREE.Vector3();
+const _riderDir = new THREE.Vector3();
+const _riderMid = new THREE.Vector3();
+
+function addRiderLimbSegment(
+  parent: THREE.Group,
+  geo: THREE.CylinderGeometry,
+  mat: THREE.Material,
+  x1: number,
+  y1: number,
+  z1: number,
+  x2: number,
+  y2: number,
+  z2: number
+) {
+  _riderStart.set(x1, y1, z1);
+  _riderEnd.set(x2, y2, z2);
+  _riderDir.subVectors(_riderEnd, _riderStart);
+  const len = Math.max(0.05, _riderDir.length());
+  _riderMid.addVectors(_riderStart, _riderEnd).multiplyScalar(0.5);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.copy(_riderMid);
+  mesh.scale.set(1, len, 1);
+  mesh.quaternion.setFromUnitVectors(_upAxis, _riderDir.normalize());
+  mesh.userData.isSharedRiderGeo = true;
+  parent.add(mesh);
+}
+
+function buildMotorcycleRider(
+  suitColor: string,
+  accentColor: string,
+  helmetColor: string
+): THREE.Group {
+  const geos = getRiderGeometries();
+  const rider = new THREE.Group();
+
+  const suitMat = new THREE.MeshStandardMaterial({
+    color: suitColor,
+    roughness: 0.58,
+    metalness: 0.14,
+  });
+  const accentMat = new THREE.MeshStandardMaterial({
+    color: accentColor,
+    roughness: 0.42,
+    metalness: 0.22,
+  });
+  const leatherDarkMat = new THREE.MeshStandardMaterial({
+    color: '#0F172A',
+    roughness: 0.72,
+    metalness: 0.12,
+  });
+  const helmetMat = new THREE.MeshStandardMaterial({
+    color: helmetColor,
+    roughness: 0.2,
+    metalness: 0.28,
+  });
+  const visorMat = new THREE.MeshStandardMaterial({
+    color: '#050811',
+    roughness: 0.08,
+    metalness: 0.85,
+  });
+
+  const mark = (m: THREE.Mesh) => {
+    m.userData.isSharedRiderGeo = true;
+    return m;
+  };
+
+  // Pelvis seated cleanly on normalized sportbike saddle (y ~ 0.90, z ~ 0.24)
+  const pelvis = mark(new THREE.Mesh(geos.pelvis, leatherDarkMat));
+  pelvis.position.set(0, 0.9, 0.24);
+  rider.add(pelvis);
+
+  // Sport-tucked upper torso leaning forward over fuel tank
+  const torsoGroup = new THREE.Group();
+  torsoGroup.position.set(0, 0.94, 0.22);
+  torsoGroup.rotation.x = -0.68;
+
+  const torso = mark(new THREE.Mesh(geos.torso, suitMat));
+  torso.position.set(0, 0.21, 0);
+  torsoGroup.add(torso);
+
+  const stripe = mark(new THREE.Mesh(geos.chestStripe, accentMat));
+  stripe.position.set(0, 0.27, 0);
+  torsoGroup.add(stripe);
+
+  // Aerodynamic speed hump on back of racing suit
+  const hump = mark(new THREE.Mesh(geos.backHump, accentMat));
+  hump.position.set(0, 0.28, 0.11);
+  torsoGroup.add(hump);
+
+  rider.add(torsoGroup);
+
+  // Helmet + dark tinted visor + rear aero spoiler
+  const helmetGroup = new THREE.Group();
+  helmetGroup.position.set(0, 1.34, -0.09);
+  helmetGroup.rotation.x = 0.14;
+
+  const shell = mark(new THREE.Mesh(geos.helmetShell, helmetMat));
+  shell.scale.set(0.95, 1.02, 1.12);
+  helmetGroup.add(shell);
+
+  const visor = mark(new THREE.Mesh(geos.helmetVisor, visorMat));
+  visor.position.set(0, -0.012, -0.108);
+  helmetGroup.add(visor);
+
+  const aeroLip = mark(new THREE.Mesh(geos.helmetLip, accentMat));
+  aeroLip.position.set(0, 0.04, 0.145);
+  aeroLip.rotation.x = 0.35;
+  helmetGroup.add(aeroLip);
+
+  rider.add(helmetGroup);
+
+  // Arms reaching from shoulders to handlebar grips + legs hugging tank to footpegs
+  for (const side of [-1, 1] as const) {
+    const shX = side * 0.185;
+    const shY = 1.18;
+    const shZ = -0.01;
+    const elX = side * 0.245;
+    const elY = 1.03;
+    const elZ = -0.16;
+    const grX = side * 0.26;
+    const grY = 0.93;
+    const grZ = -0.33;
+
+    const shoulder = mark(new THREE.Mesh(geos.jointSphere, suitMat));
+    shoulder.position.set(shX, shY, shZ);
+    rider.add(shoulder);
+
+    const elbow = mark(new THREE.Mesh(geos.jointSphere, leatherDarkMat));
+    elbow.scale.setScalar(0.84);
+    elbow.position.set(elX, elY, elZ);
+    rider.add(elbow);
+
+    addRiderLimbSegment(rider, geos.upperArm, suitMat, shX, shY, shZ, elX, elY, elZ);
+    addRiderLimbSegment(rider, geos.forearm, suitMat, elX, elY, elZ, grX, grY, grZ);
+
+    const glove = mark(new THREE.Mesh(geos.glove, leatherDarkMat));
+    glove.position.set(grX, grY, grZ);
+    glove.rotation.y = -side * 0.18;
+    rider.add(glove);
+
+    // Legs: Hip -> Knee slider -> Footpeg -> Racing boot
+    const hipX = side * 0.135;
+    const hipY = 0.89;
+    const hipZ = 0.22;
+    const knX = side * 0.205;
+    const knY = 0.67;
+    const knZ = -0.02;
+    const pegX = side * 0.185;
+    const pegY = 0.39;
+    const pegZ = 0.19;
+
+    const knee = mark(new THREE.Mesh(geos.jointSphere, accentMat));
+    knee.scale.set(0.95, 1.0, 1.1);
+    knee.position.set(knX, knY, knZ);
+    rider.add(knee);
+
+    addRiderLimbSegment(rider, geos.thigh, leatherDarkMat, hipX, hipY, hipZ, knX, knY, knZ);
+    addRiderLimbSegment(rider, geos.shin, leatherDarkMat, knX, knY, knZ, pegX, pegY, pegZ);
+
+    const boot = mark(new THREE.Mesh(geos.boot, leatherDarkMat));
+    boot.position.set(pegX, pegY - 0.045, pegZ - 0.04);
+    boot.rotation.x = 0.18;
+    rider.add(boot);
+  }
+
+  return rider;
+}
+
 interface PlayerCarRig {
   archetype: PlayerArchetype;
   isMotorcycle: boolean;
   carColor: string;
   realModelKey: RealCarModelKey | null;
   realModelGroup: THREE.Group | null;
+  riderGroup: THREE.Group | null;
   proceduralExteriorGroup: THREE.Group;
   proceduralWheelsGroup: THREE.Group;
   cockpitOffsetY: number;
@@ -566,13 +776,13 @@ interface PlayerCarRig {
   lastScreenNitro: boolean;
   frontWheelPivots: THREE.Group[];
   wheelSpinMeshes: THREE.Mesh[];
+  firstPersonHiddenMeshes: THREE.Object3D[];
   roofMesh: THREE.Mesh;
   windshieldMesh: THREE.Mesh;
   windshieldMat: THREE.MeshPhysicalMaterial;
   shadowPlane: THREE.Mesh;
   nitroFlames: THREE.Group;
-  headlightLeft: THREE.SpotLight;
-  headlightRight: THREE.SpotLight;
+  headlightSpot: THREE.SpotLight;
   headlightBeamPlane: THREE.Mesh;
 }
 
@@ -702,6 +912,7 @@ function buildPlayerCar(
   let turretGroup: THREE.Group | null = null;
   const frontWheelPivots: THREE.Group[] = [];
   const wheelSpinMeshes: THREE.Mesh[] = [];
+  const firstPersonHiddenMeshes: THREE.Object3D[] = [];
 
   const yLift = carOpt.cockpitOffsetY;
   const zShift = carOpt.cockpitOffsetZ;
@@ -728,6 +939,7 @@ function buildPlayerCar(
     lowerHull.castShadow = true;
     lowerHull.receiveShadow = true;
     proceduralExteriorGroup.add(lowerHull);
+    firstPersonHiddenMeshes.push(lowerHull);
 
     // Sloped front glacis armor (kept low so driver cupola has clear view!)
     const glacis = new THREE.Mesh(new THREE.BoxGeometry(1.84, 0.24, 1.35), bodyMat);
@@ -783,11 +995,13 @@ function buildPlayerCar(
     const turretMain = new THREE.Mesh(new THREE.BoxGeometry(1.44, 0.46, 1.85), bodyMat);
     turretMain.castShadow = true;
     turretGroup.add(turretMain);
+    firstPersonHiddenMeshes.push(turretMain);
 
     const turretCheek = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.38, 0.55), armorDarkMat);
     turretCheek.position.set(0, -0.02, -0.95);
     turretCheek.rotation.x = 0.24;
     turretGroup.add(turretCheek);
+    firstPersonHiddenMeshes.push(turretCheek);
 
     const commanderHatch = new THREE.Mesh(
       new THREE.CylinderGeometry(0.24, 0.26, 0.14, 14),
@@ -795,6 +1009,7 @@ function buildPlayerCar(
     );
     commanderHatch.position.set(0.32, 0.28, 0.25);
     turretGroup.add(commanderHatch);
+    firstPersonHiddenMeshes.push(commanderHatch);
 
     // ERA Reactive armor blocks along turret sides
     for (const ex of [-0.76, 0.76]) {
@@ -802,6 +1017,7 @@ function buildPlayerCar(
         const era = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, 0.42), accentMat);
         era.position.set(ex, 0.02, -0.45 + k * 0.52);
         turretGroup.add(era);
+        firstPersonHiddenMeshes.push(era);
       }
     }
 
@@ -960,6 +1176,7 @@ function buildPlayerCar(
     lowerHull.castShadow = true;
     lowerHull.receiveShadow = true;
     proceduralExteriorGroup.add(lowerHull);
+    firstPersonHiddenMeshes.push(lowerHull);
 
     // Police white doors & roof contrast
     if (arch === 'police') {
@@ -969,6 +1186,7 @@ function buildPlayerCar(
       );
       whiteDoorBand.position.set(0, hullY, 0.05);
       proceduralExteriorGroup.add(whiteDoorBand);
+      firstPersonHiddenMeshes.push(whiteDoorBand);
     }
 
     // Hood
@@ -1464,6 +1682,13 @@ function buildPlayerCar(
   centerScreen.rotation.x = -0.22;
   cabinInteriorGroup.add(centerScreen);
 
+  const cabinFloor = new THREE.Mesh(
+    new THREE.BoxGeometry(1.62, 0.04, 1.6),
+    new THREE.MeshStandardMaterial({ color: '#0B0F18', roughness: 0.92 })
+  );
+  cabinFloor.position.set(0, 0.52, -0.14);
+  cabinInteriorGroup.add(cabinFloor);
+
   const consoleBox = new THREE.Mesh(
     new THREE.BoxGeometry(0.24, 0.24, 0.85),
     new THREE.MeshStandardMaterial({ color: '#171D2B', roughness: 0.7 })
@@ -1512,8 +1737,8 @@ function buildPlayerCar(
   gearLeverPivot.add(gearKnobCap);
 
   const shifterGripAnchor = new THREE.Object3D();
-  shifterGripAnchor.position.set(-0.018, 0.172, 0.044);
-  shifterGripAnchor.rotation.set(-0.18, -0.22, 1.15);
+  shifterGripAnchor.position.set(0.014, 0.194, 0.052);
+  shifterGripAnchor.rotation.set(-0.24, 0.05, 1.32);
   gearLeverPivot.add(shifterGripAnchor);
 
   cabinInteriorGroup.add(gearLeverPivot);
@@ -1573,13 +1798,13 @@ function buildPlayerCar(
   steeringWheel.add(hornCap);
 
   const leftGripAnchor = new THREE.Object3D();
-  leftGripAnchor.position.set(-0.165, 0.022, 0.045);
-  leftGripAnchor.rotation.set(0.12, -0.14, -0.14);
+  leftGripAnchor.position.set(-0.184, 0.038, 0.052);
+  leftGripAnchor.rotation.set(0.12, -0.14, -0.16);
   steeringWheel.add(leftGripAnchor);
 
   const rightGripAnchor = new THREE.Object3D();
-  rightGripAnchor.position.set(0.165, 0.022, 0.045);
-  rightGripAnchor.rotation.set(0.12, 0.14, 0.14);
+  rightGripAnchor.position.set(0.184, 0.038, 0.052);
+  rightGripAnchor.rotation.set(0.12, 0.14, 0.16);
   steeringWheel.add(rightGripAnchor);
 
   cockpitGroup.add(steeringWheel);
@@ -1592,7 +1817,7 @@ function buildPlayerCar(
     roughness: 0.78,
     metalness: 0.08,
   });
-  const forearmGeo = new THREE.CylinderGeometry(0.034, 0.046, 1, 10);
+  const forearmGeo = new THREE.CylinderGeometry(0.027, 0.042, 1, 10);
   const leftForearmMesh = new THREE.Mesh(forearmGeo, sleeveMat);
   const rightForearmMesh = new THREE.Mesh(forearmGeo, sleeveMat);
   const leftHandGroup = buildDriverHand('left');
@@ -1622,18 +1847,12 @@ function buildPlayerCar(
   }
   bodyGroup.add(nitroFlames);
 
-  // 12. Real Headlight SpotLights + Diffused Road Light Pool (active in Night mode)
-  const headlightLeft = new THREE.SpotLight('#FEF9C3', isSoftwareGl ? 115 : 145, 115, Math.PI / 3.8, 0.95, 0.85);
-  headlightLeft.position.set(isBike ? -0.15 : -0.68, 0.7, isBike ? -1.0 : -2.18);
-  headlightLeft.target.position.set(isBike ? -0.4 : -1.3, 0, -34);
-  bodyGroup.add(headlightLeft);
-  bodyGroup.add(headlightLeft.target);
-
-  const headlightRight = new THREE.SpotLight('#FEF9C3', isSoftwareGl ? 115 : 145, 115, Math.PI / 3.8, 0.95, 0.85);
-  headlightRight.position.set(isBike ? 0.15 : 0.68, 0.7, isBike ? -1.0 : -2.18);
-  headlightRight.target.position.set(isBike ? 0.4 : 1.3, 0, -34);
-  bodyGroup.add(headlightRight);
-  bodyGroup.add(headlightRight.target);
+  // 12. Real Headlight SpotLight + Diffused Road Light Pool (active in Night mode)
+  const headlightSpot = new THREE.SpotLight('#FEF9C3', isSoftwareGl ? 155 : 195, 120, Math.PI / 3.1, 0.92, 0.85);
+  headlightSpot.position.set(0, 0.72, isBike ? -1.0 : -2.18);
+  headlightSpot.target.position.set(0, 0, -34);
+  bodyGroup.add(headlightSpot);
+  bodyGroup.add(headlightSpot.target);
 
   const headlightBeamPlane = new THREE.Mesh(
     new THREE.PlaneGeometry(12.5, 32),
@@ -1662,12 +1881,21 @@ function buildPlayerCar(
     }
   }
 
+  let riderGroup: THREE.Group | null = null;
+  if (isBike) {
+    const suitCol = arch === 'h2r' ? '#111827' : arch === 'ducati' ? '#1E293B' : '#0F172A';
+    const helmetCol = arch === 'yamaha' ? '#F8FAFC' : arch === 'h2r' ? '#10B981' : carOpt.bodyColor;
+    riderGroup = buildMotorcycleRider(suitCol, carOpt.accentColor, helmetCol);
+    bodyGroup.add(riderGroup);
+  }
+
   return {
     archetype: arch,
     isMotorcycle: isBike,
     carColor: carOpt.bodyColor,
     realModelKey,
     realModelGroup,
+    riderGroup,
     proceduralExteriorGroup,
     proceduralWheelsGroup,
     cockpitOffsetY: yLift,
@@ -1703,13 +1931,13 @@ function buildPlayerCar(
     lastScreenNitro: false,
     frontWheelPivots,
     wheelSpinMeshes,
+    firstPersonHiddenMeshes,
     roofMesh,
     windshieldMesh,
     windshieldMat,
     shadowPlane,
     nitroFlames,
-    headlightLeft,
-    headlightRight,
+    headlightSpot,
     headlightBeamPlane,
   };
 }
@@ -1722,6 +1950,7 @@ interface TrafficMeshRig {
   proceduralGroup: THREE.Group;
   realModelKey: RealCarModelKey | null;
   realModelGroup: THREE.Group | null;
+  riderGroup: THREE.Group | null;
   color: string;
   bodyMat: THREE.MeshPhysicalMaterial;
   shadowPlane: THREE.Mesh;
@@ -2197,6 +2426,12 @@ function buildTrafficCarRig(car: TrafficVehicle, shadowTex: THREE.CanvasTexture)
     }
   }
 
+  let riderGroup: THREE.Group | null = null;
+  if (isBike) {
+    riderGroup = buildMotorcycleRider('#1E293B', car.secondaryColor, car.color);
+    group.add(riderGroup);
+  }
+
   return {
     kind: car.kind,
     isMotorcycle: isBike,
@@ -2204,6 +2439,7 @@ function buildTrafficCarRig(car: TrafficVehicle, shadowTex: THREE.CanvasTexture)
     proceduralGroup,
     realModelKey,
     realModelGroup,
+    riderGroup,
     color: car.color,
     bodyMat,
     shadowPlane: shadow,
@@ -2225,6 +2461,14 @@ function disposeObjectSafely(root: THREE.Object3D) {
           if (m && m.userData?.isOwnedCloneMaterial) {
             m.dispose();
           }
+        }
+        return;
+      }
+      if (obj.userData?.isSharedRiderGeo) {
+        if (Array.isArray(obj.material)) {
+          obj.material.forEach((m) => m.dispose());
+        } else {
+          obj.material.dispose();
         }
         return;
       }
@@ -2311,6 +2555,11 @@ export class Highway3DRenderer {
   private frameId: number = 0;
   private disposed: boolean = false;
   private unsubscribeModels: (() => void) | null = null;
+  private readyModelQueue: RealCarModelKey[] = [];
+  private prewarmedModels = new Set<RealCarModelKey>();
+  private prewarmHolder: THREE.Group | null = null;
+  private activeTrafficIds = new Set<number>();
+  private activePickupIds = new Set<number>();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -2323,7 +2572,7 @@ export class Highway3DRenderer {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.24;
-    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.5));
+    this.renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 1.35));
     this.renderer.shadowMap.enabled = !this.isSoftwareGl;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setSize(container.clientWidth || 800, container.clientHeight || 600);
@@ -2464,7 +2713,7 @@ export class Highway3DRenderer {
     for (const side of [-1, 1]) {
       const rail = new THREE.Mesh(railGeo, railMat);
       rail.position.set(side * (TOTAL_ASPHALT_WIDTH_3D / 2 + 0.35), 0.62, -88);
-      rail.castShadow = true;
+      rail.castShadow = false;
       this.scene.add(rail);
     }
 
@@ -2557,13 +2806,11 @@ export class Highway3DRenderer {
     this.scene.add(this.lampHeads);
     this.scene.add(this.lampGlowCones);
 
-    // 2 pooled PointLights that illuminate road & traffic under nearest street lamps
-    for (let i = 0; i < 2; i++) {
-      const pl = new THREE.PointLight('#FDE68A', 40, 34, 1.15);
-      pl.position.set(0, 5.6, -24 * i);
-      this.scene.add(pl);
-      this.lampPointLights.push(pl);
-    }
+    // 1 pooled PointLight illuminating road & traffic under nearest street lamp (cuts fragment shader work)
+    const pl = new THREE.PointLight('#FDE68A', 42, 36, 1.15);
+    pl.position.set(0, 5.6, -18);
+    this.scene.add(pl);
+    this.lampPointLights.push(pl);
 
     // Player Car Rig
     this.playerRig = buildPlayerCar(
@@ -2648,23 +2895,55 @@ export class Highway3DRenderer {
 
     this.applyAtmosphere('night');
 
-    preloadAllRealCarModels();
+    preloadAllRealCarModels(this.playerRig.realModelKey ?? undefined);
     this.unsubscribeModels = onRealCarModelReady((key) => {
       if (this.disposed) return;
-      const quality = this.graphicsQuality;
-      if (this.playerRig.realModelKey === key && !this.playerRig.realModelGroup) {
-        const realGroup = instantiateRealCarModel(key, this.playerRig.carColor);
+      if (!this.readyModelQueue.includes(key)) {
+        this.readyModelQueue.push(key);
+      }
+    });
+  }
+
+  private processNextReadyModel() {
+    if (this.prewarmHolder) {
+      this.scene.remove(this.prewarmHolder);
+      disposeObjectSafely(this.prewarmHolder);
+      this.prewarmHolder = null;
+    }
+
+    const key = this.readyModelQueue.shift();
+    if (!key) return;
+
+    const quality = this.graphicsQuality;
+    let attached = false;
+
+    if (this.playerRig.realModelKey === key && !this.playerRig.realModelGroup) {
+      const realGroup = instantiateRealCarModel(key, this.playerRig.carColor);
+      if (realGroup) {
+        applyRealCarQuality(realGroup, quality);
+        this.playerRig.realModelGroup = realGroup;
+        this.playerRig.bodyGroup.add(realGroup);
+        this.playerRig.proceduralExteriorGroup.visible = false;
+        this.playerRig.proceduralWheelsGroup.visible = false;
+        this.playerRig.cabinInteriorGroup.visible = false;
+        this.playerRig.steeringWheel.visible = false;
+        attached = true;
+      }
+    }
+    for (const rig of this.trafficRigs.values()) {
+      if (rig.realModelKey === key && !rig.realModelGroup) {
+        const realGroup = instantiateRealCarModel(key, rig.color);
         if (realGroup) {
           applyRealCarQuality(realGroup, quality);
-          this.playerRig.realModelGroup = realGroup;
-          this.playerRig.bodyGroup.add(realGroup);
-          this.playerRig.proceduralExteriorGroup.visible = false;
-          this.playerRig.proceduralWheelsGroup.visible = false;
-          this.playerRig.cabinInteriorGroup.visible = false;
-          this.playerRig.steeringWheel.visible = false;
+          rig.realModelGroup = realGroup;
+          rig.group.add(realGroup);
+          rig.proceduralGroup.visible = false;
+          attached = true;
         }
       }
-      for (const rig of this.trafficRigs.values()) {
+    }
+    for (const list of this.trafficRigPool.values()) {
+      for (const rig of list) {
         if (rig.realModelKey === key && !rig.realModelGroup) {
           const realGroup = instantiateRealCarModel(key, rig.color);
           if (realGroup) {
@@ -2675,20 +2954,29 @@ export class Highway3DRenderer {
           }
         }
       }
-      for (const list of this.trafficRigPool.values()) {
-        for (const rig of list) {
-          if (rig.realModelKey === key && !rig.realModelGroup) {
-            const realGroup = instantiateRealCarModel(key, rig.color);
-            if (realGroup) {
-              applyRealCarQuality(realGroup, quality);
-              rig.realModelGroup = realGroup;
-              rig.group.add(realGroup);
-              rig.proceduralGroup.visible = false;
-            }
-          }
+    }
+
+    // Force 1-frame tiny prewarm below road plane so GPU uploads textures & compiles shaders ahead of collisions
+    if (!this.isSoftwareGl && !this.prewarmedModels.has(key)) {
+      this.prewarmedModels.add(key);
+      const prewarmClone = instantiateRealCarModel(key, '#FFFFFF');
+      if (prewarmClone) {
+        applyRealCarQuality(prewarmClone, quality);
+        prewarmClone.traverse((o) => {
+          o.frustumCulled = false;
+        });
+        const holder = new THREE.Group();
+        holder.position.set(0, -0.5, -12);
+        holder.scale.setScalar(0.0001);
+        holder.add(prewarmClone);
+        this.scene.add(holder);
+        this.prewarmHolder = holder;
+        if (!attached) {
+          // Ensure prewarm runs even if no active traffic rig used this key yet
+          this.renderer.compile(holder, this.camera);
         }
       }
-    });
+    }
   }
 
   public resize(width: number, height: number) {
@@ -2769,11 +3057,10 @@ export class Highway3DRenderer {
       this.lampHeadMat.emissiveIntensity = isLow ? 2.4 : isHigh ? 3.6 : 3.0;
       this.lampGlowCones.visible = true;
       this.playerRig.headlightBeamPlane.visible = true;
-      const beamIntensity = isHigh ? (this.isSoftwareGl ? 115 : 145) : 0;
-      this.playerRig.headlightLeft.intensity = beamIntensity;
-      this.playerRig.headlightRight.intensity = beamIntensity;
+      const beamIntensity = isHigh ? (this.isSoftwareGl ? 155 : 195) : 0;
+      this.playerRig.headlightSpot.intensity = beamIntensity;
       for (const pl of this.lampPointLights) {
-        pl.intensity = isHigh ? 40 : 0;
+        pl.intensity = isHigh ? 42 : 0;
       }
     } else {
       this.hemiLight.intensity = isLow ? 1.65 : 1.25;
@@ -2783,8 +3070,7 @@ export class Highway3DRenderer {
       this.lampHeadMat.emissiveIntensity = 0.1;
       this.lampGlowCones.visible = false;
       this.playerRig.headlightBeamPlane.visible = false;
-      this.playerRig.headlightLeft.intensity = 0;
-      this.playerRig.headlightRight.intensity = 0;
+      this.playerRig.headlightSpot.intensity = 0;
       for (const pl of this.lampPointLights) {
         pl.intensity = 0;
       }
@@ -2803,8 +3089,8 @@ export class Highway3DRenderer {
       isLow || this.isSoftwareGl
         ? 1
         : isMedium
-        ? Math.min(window.devicePixelRatio, 1.2)
-        : Math.min(window.devicePixelRatio, 1.5);
+        ? Math.min(window.devicePixelRatio, 1.1)
+        : Math.min(window.devicePixelRatio, 1.35);
 
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.setSize(this.container.clientWidth || 800, this.container.clientHeight || 600);
@@ -2928,6 +3214,8 @@ export class Highway3DRenderer {
     snapCamera: boolean = false
   ) {
     if (this.disposed) return;
+
+    this.processNextReadyModel();
 
     // 1. Scroll Road & Terrain Textures (1:1 world meters: road height 300 / repeat 20 = 15m, terrain 320 / 32 = 10m)
     const roadOffset = (engine.worldScrollMeters / 15) % 1;
@@ -3103,10 +3391,10 @@ export class Highway3DRenderer {
           .multiply(this.playerRig.shifterGripAnchor.quaternion);
 
         _handPos.lerpVectors(_gripPos, _shiftPos, handToShifter);
-        // Subtle lift/back arc while hand travels between wheel rim and gear knob
+        // Clear lift/back arc while hand travels between wheel rim and gear knob
         const transitArc = Math.sin(handToShifter * Math.PI);
-        _handPos.y += transitArc * 0.045;
-        _handPos.z += transitArc * 0.032;
+        _handPos.y += transitArc * 0.055;
+        _handPos.z += transitArc * 0.065;
 
         this.playerRig.rightHandGroup.position.copy(_handPos);
         this.playerRig.rightHandGroup.quaternion.slerpQuaternions(
@@ -3150,10 +3438,9 @@ export class Highway3DRenderer {
     const hornFlash = engine.hornActive || engine.hornFlashTimer > 0;
     this.playerRig.headLightMat.emissiveIntensity = hornFlash ? 5.5 : 2.6;
     if (this.lastTimeOfDay === 'night') {
-      const baseBeam = this.graphicsQuality === 'high' ? (this.isSoftwareGl ? 115 : 145) : 0;
+      const baseBeam = this.graphicsQuality === 'high' ? (this.isSoftwareGl ? 155 : 195) : 0;
       const beamVal = hornFlash ? baseBeam * 1.55 : baseBeam;
-      this.playerRig.headlightLeft.intensity = beamVal;
-      this.playerRig.headlightRight.intensity = beamVal;
+      this.playerRig.headlightSpot.intensity = beamVal;
       (this.playerRig.headlightBeamPlane.material as THREE.MeshBasicMaterial).opacity = hornFlash ? 0.92 : 0.72;
     }
 
@@ -3191,6 +3478,11 @@ export class Highway3DRenderer {
       this.playerRig.nitroFlames.scale.z = 0.8 + Math.random() * 0.65;
     }
 
+    // Hide motorcycle rider in 1st-person cam so helmet does not block view; show in 3rd-person
+    if (this.playerRig.riderGroup) {
+      this.playerRig.riderGroup.visible = !isFirst;
+    }
+
     // Switch cleanly between real GLB exterior (3rd-person, F1 & motorcycles) and procedural cockpit (1st-person cars)
     const hasRealModel = this.playerRig.realModelGroup !== null;
     if (hasRealModel && this.playerRig.realModelGroup) {
@@ -3209,15 +3501,19 @@ export class Highway3DRenderer {
       this.playerRig.driverArmsGroup.visible = isFirst && !isF1 && !isBike;
     }
 
-    // Keep cabin roof & glass windshield visible in 1st-person mode (lower glass opacity so cabin & reflections look crisp)
+    // Keep cabin roof & glass windshield visible in 1st-person mode while hiding exterior hull/turret boxes that clip cabin/hands
     if (!isF1 && !isBike) {
       this.playerRig.roofMesh.visible = true;
       this.playerRig.windshieldMesh.visible = true;
       this.playerRig.windshieldMat.opacity = isFirst ? 0.14 : 0.42;
+      for (const m of this.playerRig.firstPersonHiddenMeshes) {
+        m.visible = !isFirst;
+      }
     }
 
     // 4. Sync Traffic Cars (with zero-churn object pooling)
-    const activeIds = new Set<number>();
+    const activeIds = this.activeTrafficIds;
+    activeIds.clear();
     const blinkOn = Math.floor(performance.now() * 0.009) % 2 === 0;
     for (const car of engine.traffic) {
       activeIds.add(car.id);
@@ -3273,7 +3569,8 @@ export class Highway3DRenderer {
     }
 
     // 5. Sync 3D Pickups (shared geometries/materials for zero shader churn)
-    const activePickups = new Set<number>();
+    const activePickups = this.activePickupIds;
+    activePickups.clear();
     for (const item of engine.pickups) {
       activePickups.add(item.id);
       let mesh = this.pickupMeshes.get(item.id);
@@ -3417,13 +3714,15 @@ export class Highway3DRenderer {
       if (typeof gl.fenceSync === 'function') {
         const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
         gl.flush();
+        let polls = 0;
         const poll = () => {
           if (this.disposed || gl.isContextLost()) {
             if (sync) gl.deleteSync(sync);
             return;
           }
+          polls += 1;
           const state = sync && gl.getSyncParameter(sync, gl.SYNC_STATUS);
-          if (state === gl.UNSIGNALED) {
+          if (state === gl.UNSIGNALED && polls < 60) {
             this.frameId = window.setTimeout(poll, 5);
           } else {
             if (sync) gl.deleteSync(sync);
@@ -3477,6 +3776,12 @@ export class Highway3DRenderer {
     this.disposed = true;
     this.unsubscribeModels?.();
     this.unsubscribeModels = null;
+    if (this.prewarmHolder) {
+      this.scene.remove(this.prewarmHolder);
+      this.prewarmHolder = null;
+    }
+    this.readyModelQueue.length = 0;
+    this.prewarmedModels.clear();
     cancelAnimationFrame(this.frameId);
     clearTimeout(this.frameId);
 

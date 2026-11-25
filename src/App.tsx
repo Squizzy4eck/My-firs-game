@@ -224,6 +224,8 @@ function getCalloutLabel(key: CalloutKey, t: TranslationBundle): string {
       return t.calloutBonus;
     case 'hit':
       return t.calloutHit;
+    case 'curb':
+      return t.calloutCurb;
     case 'crash':
       return t.calloutCrash;
   }
@@ -791,6 +793,12 @@ export default function App() {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
+    pointerSteerActiveRef.current = null;
+    inputRef.current.steerLeft = false;
+    inputRef.current.steerRight = false;
+    inputRef.current.accelerate = false;
+    inputRef.current.brake = false;
+    inputRef.current.nitro = false;
     setListeningAction(null);
     setPauseSubView('menu');
     engine.resetRun();
@@ -1087,6 +1095,12 @@ export default function App() {
             writeStoredBestScore(engine.bestScore);
           }
           if (result.crashedOut) {
+            pointerSteerActiveRef.current = null;
+            inputRef.current.steerLeft = false;
+            inputRef.current.steerRight = false;
+            inputRef.current.accelerate = false;
+            inputRef.current.brake = false;
+            inputRef.current.nitro = false;
             engine.setHorn(false);
             setIsHornActive(false);
             soundEngine.stopEngine();
@@ -1094,7 +1108,7 @@ export default function App() {
             syncGameState('GAME_OVER');
           } else {
             hudSyncAccum += dt;
-            if (hudSyncAccum >= 0.06) {
+            if (hudSyncAccum >= 0.08) {
               hudSyncAccum = 0;
               setHud(engine.getHudSnapshot());
             }
@@ -1110,7 +1124,7 @@ export default function App() {
       },
       (nextFps) => {
         if (showFpsRef.current) {
-          setFps(nextFps);
+          setFps((prev) => (prev === nextFps ? prev : nextFps));
         }
       }
     );
